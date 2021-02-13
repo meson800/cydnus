@@ -16,10 +16,10 @@ export class NodeEditorView extends HTMLBoxView {
         this.canvas = canvas({
       style: {
         padding: '2px',
-        width: 500,
-        height: 400,
         backgroundColor: '#ffffff',
       },
+      width: 500,
+      height: 400
     })
         this.draw_ctx = this.canvas.getContext("2d")
         this.el.appendChild(this.canvas)
