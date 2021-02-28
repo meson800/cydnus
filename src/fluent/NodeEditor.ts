@@ -6,6 +6,7 @@ const COLOR_NODE_INTERIOR: string = "rgba(90, 90, 90, 0.75)"
 const COLOR_NODE_TITLE: string = "rgba(50, 50, 50, 0.75)"
 const COLOR_NODE_SHADOW: string = "rgba(0,0,0,0)"
 const COLOR_NODE_HIGHLIGHT: string = "white"
+const COLOR_STREAM: string = "white"
 const PORT_COLORS: string[] = ["rgb(161, 161, 161)", "rgb(99, 199, 99)", "rgb(99, 99, 199)", "rgb(199, 199, 41)", "rgb(229, 139, 86)"]
 
 
@@ -39,6 +40,13 @@ interface Port {
     is_output: boolean
     type: PortType
     name: string
+}
+
+interface Stream {
+    out_node: number,
+    out_port: number,
+    in_node: number,
+    in_port: number
 }
 
 class Vec2 {
@@ -97,12 +105,18 @@ class UIStatus {
     origin: Vec2
     scale: number
     selected_nodes: Set<number>
+    lastMouseDrawLoc: Vec2
+    lastPortNode: number
+    lastPort: number
 
     constructor() {
         this.mode = UIStatusMode.None
         this.origin = {x: 0, y: 0}
         this.scale = 1.0
         this.selected_nodes = new Set<number>()
+        this.lastMouseDrawLoc = {x: 0, y: 0}
+        this.lastPortNode = 0
+        this.lastPort = 0
     }
 
     /**
@@ -191,13 +205,8 @@ class Node {
             ctx.strokeStyle = "black"
             ctx.lineWidth = 1
 
-            const port_loc = new Vec2(
-                this.location.x + (port.is_output ? size.x : 0),
-                this.location.y + 20 + (i * 2 * this.font_size))
-
-            ctx.beginPath()
-            ctx.arc(port_loc.x, port_loc.y, 5, 0, 2 * Math.PI)
-            ctx.closePath()
+            const port_loc: Vec2 = this._getPortLocation(size, i)
+            this.pathPort(ctx, size, i)
             ctx.fill()
             ctx.stroke()
 
@@ -214,14 +223,45 @@ class Node {
         pathRoundedRectangle(ctx, this.location.x, this.location.y, size.x, size.y, this.radius)
     }
 
-    handleMouse(ctx: CanvasRenderingContext2D, screen_coords: Vec2) : UIAction {
-        this.pathOutline(ctx,this.calculateSize(ctx))
+    _getPortLocation(size: Vec2, port_idx: number): Vec2 {
+        const port: Port = this.ports[port_idx]
+        return new Vec2(
+            this.location.x + (port.is_output ? size.x : 0),
+            this.location.y + 25 + (port_idx * 2 * this.font_size))
+    }
 
+    getPortLocation(ctx: CanvasRenderingContext2D, port_idx: number): Vec2 {
+        return this._getPortLocation(this.calculateSize(ctx), port_idx)
+    }
+
+    pathPort(ctx: CanvasRenderingContext2D, size: Vec2, port_idx: number): void {
+        if (port_idx >= 0 && port_idx < this.ports.length) {
+            const port_loc = this._getPortLocation(size, port_idx)
+
+            ctx.beginPath()
+            ctx.arc(port_loc.x, port_loc.y, 5, 0, 2 * Math.PI)
+            ctx.closePath()
+        }
+    }
+
+    handleMouse(ctx: CanvasRenderingContext2D, screen_coords: Vec2) : UIAction {
+        const size: Vec2 = this.calculateSize(ctx)
+
+        // Check each of the ports:
+        for (let i: number = 0; i < this.ports.length; i++) {
+            this.pathPort(ctx, size, i)
+            if (ctx.isPointInPath(screen_coords.x, screen_coords.y)) {
+                return {'type': UIActionType.Port, 'port_id': i}
+            }
+        }
+
+        // Check for general outline purposes
+        this.pathOutline(ctx,size)
         if (ctx.isPointInPath(screen_coords.x, screen_coords.y)) {
             return {'type': UIActionType.Drag}
         } else {
-            return {'type': UIActionType.NA}
         }
+        return {'type': UIActionType.NA}
 
     }
 
@@ -258,10 +298,24 @@ export class NodeEditorView extends HTMLBoxView {
     draw_ctx: CanvasRenderingContext2D | null
     ui_status: UIStatus
     nodes: Map<number, Node>
+    streams: Set<Stream>
+
     last_node_uid: number
 
     connect_signals(): void {
         super.connect_signals()
+    }
+
+    getMouseCanvasLoc(ev: MouseEvent): Vec2 {
+        if (this.canvas && this.draw_ctx) {
+            const rect: DOMRect = this.canvas.getBoundingClientRect()
+            return new Vec2(ev.clientX - rect.top, ev.clientY - rect.left)
+        }
+        return new Vec2()
+    }
+
+    getMouseDrawLoc(ev: MouseEvent): Vec2 {
+        return this.ui_status.canvasToDrawCoord(this.getMouseCanvasLoc(ev))
     }
 
     /**
@@ -271,8 +325,7 @@ export class NodeEditorView extends HTMLBoxView {
      */
     handleMouseDown(ev: MouseEvent) {
         if (this.draw_ctx) {
-            const rect: DOMRect = this.canvas.getBoundingClientRect()
-            const mouseLoc: Vec2 = new Vec2(ev.clientX - rect.top, ev.clientY - rect.left)
+            const mouseCanvasLoc: Vec2 = this.getMouseCanvasLoc(ev)
 
             switch (ev.button) {
                 case 0: {
@@ -280,7 +333,7 @@ export class NodeEditorView extends HTMLBoxView {
                     let lastAction: UIAction = {type: UIActionType.NA}
                     let lastId: number | undefined
                     for (const [id, node] of this.nodes) {
-                        const action: UIAction = node.handleMouse(this.draw_ctx, mouseLoc)
+                        const action: UIAction = node.handleMouse(this.draw_ctx, mouseCanvasLoc)
                         if (action.type != UIActionType.NA) {
                             lastAction = action
                             lastId = id
@@ -302,12 +355,44 @@ export class NodeEditorView extends HTMLBoxView {
                         if (!this.ui_status.selected_nodes.has(lastId)) {
                             this.ui_status.selected_nodes.add(lastId)
                         }
+
+                        // If we have > 0 selected nodes, go into drag mode
+                        if (this.ui_status.selected_nodes.size > 0) {
+                            this.ui_status.mode = UIStatusMode.NodeDragging
+                        }
+                    } else if (lastAction.type == UIActionType.Port && lastId != undefined &&
+                        lastAction.port_id != undefined) {
+                        // Start drawing :)
+                        this.ui_status.mode = UIStatusMode.PortDrawing
+                        this.ui_status.lastMouseDrawLoc = this.getMouseDrawLoc(ev)
+
+                        const select_node = this.nodes.get(lastId)
+                        if (select_node && lastAction.port_id >= 0 && lastAction.port_id < select_node.ports.length) {
+                            this.ui_status.lastPortNode = lastId
+                            this.ui_status.lastPort = lastAction.port_id
+                            // If this is an input node, disconnect the stream if it exists
+                            if (!select_node.ports[lastAction.port_id].is_output) {
+                                let prior_stream: Stream | undefined = undefined
+                                this.streams.forEach(stream => {
+                                    if (stream.in_node == lastId && stream.in_port == lastAction.port_id) {
+                                        prior_stream = stream
+                                        this.ui_status.lastPortNode = stream.out_node
+                                        this.ui_status.lastPort = stream.out_port
+                                    }
+
+                                    if (stream.out_node == lastId && stream.out_port == lastAction.port_id) {
+                                        prior_stream = stream
+                                        this.ui_status.lastPortNode = stream.in_node
+                                        this.ui_status.lastPort = stream.in_port
+                                    }
+                                })
+                                if (prior_stream) {
+                                    this.streams.delete(prior_stream)
+                                }
+                            }
+                        }
                     }
 
-                    // If we have > 0 selected nodes, go into drag mode
-                    if (this.ui_status.selected_nodes.size > 0) {
-                        this.ui_status.mode = UIStatusMode.NodeDragging
-                    }
                     this.redraw()
                     break
                 }
@@ -331,20 +416,63 @@ export class NodeEditorView extends HTMLBoxView {
      * @param ev The mouse event associated with the mouse up event
      */
     handleMouseUp(ev: MouseEvent) {
-        switch (ev.button) {
-            case 0: {
-                this.ui_status.mode = UIStatusMode.None
-                break
-            }
-            case 1: {
-                if (this.ui_status.mode == UIStatusMode.CanvasDragging) {
+        if (this.draw_ctx) {
+            const mouseCanvasLoc: Vec2 = this.getMouseCanvasLoc(ev)
+            switch (ev.button) {
+                case 0: {
+
+                    if (this.ui_status.mode == UIStatusMode.PortDrawing) {
+                        // Check to see if we can complete a stream
+                        let lastAction: UIAction = {type: UIActionType.NA}
+                        let lastId: number | undefined
+                        for (const [id, node] of this.nodes) {
+                            const action: UIAction = node.handleMouse(this.draw_ctx, mouseCanvasLoc)
+                            if (action.type != UIActionType.NA) {
+                                lastAction = action
+                                lastId = id
+                            }
+                        }
+
+                        if (lastAction.type == UIActionType.Port && lastId != undefined && lastAction.port_id != undefined) {
+                            const stream: Stream = {
+                                'in_node': this.ui_status.lastPortNode,
+                                'in_port': this.ui_status.lastPort,
+                                'out_node': lastId,
+                                'out_port': lastAction.port_id
+                            }
+
+                            const in_node = this.nodes.get(stream.in_node)
+                            const out_node = this.nodes.get(stream.out_node)
+                            if (in_node && out_node
+                                && stream.in_port >= 0 && stream.in_port < in_node.ports.length
+                                && stream.out_port >= 0 && stream.out_port < out_node.ports.length) {
+                                    const in_port = in_node.ports[stream.in_port]
+                                    const out_port = out_node.ports[stream.out_port]
+
+                                    if (stream.in_node != stream.out_node
+                                        && in_port.is_output != out_port.is_output
+                                        && in_port.type == out_port.type) {
+                                        
+                                        this.streams.add(stream)
+                                    }
+                                }
+
+                        }
+                    }
                     this.ui_status.mode = UIStatusMode.None
+                    this.redraw()
+                    break
                 }
-                ev.preventDefault()
-                break
-            }
-            default: {
-                break
+                case 1: {
+                    if (this.ui_status.mode == UIStatusMode.CanvasDragging) {
+                        this.ui_status.mode = UIStatusMode.None
+                    }
+                    ev.preventDefault()
+                    break
+                }
+                default: {
+                    break
+                }
             }
         }
     }
@@ -359,6 +487,11 @@ export class NodeEditorView extends HTMLBoxView {
             case UIStatusMode.CanvasDragging: {
                 this.ui_status.origin.x += ev.movementX
                 this.ui_status.origin.y += ev.movementY
+                this.redraw()
+                break
+            }
+            case UIStatusMode.PortDrawing: {
+                this.ui_status.lastMouseDrawLoc = this.getMouseDrawLoc(ev)
                 this.redraw()
                 break
             }
@@ -383,11 +516,7 @@ export class NodeEditorView extends HTMLBoxView {
         ev.preventDefault()
 
         // Account for client bounding rectangle padding
-        const rect: DOMRect = this.canvas.getBoundingClientRect()
-        const drawCoords: Vec2 = this.ui_status.canvasToDrawCoord({
-            x: ev.clientX - rect.left,
-            y: ev.clientY - rect.top
-        })
+        const drawCoords: Vec2 = this.getMouseDrawLoc(ev)
         const offset: number = .03 * Math.sign(ev.deltaY)
         this.ui_status.origin.x += (offset * drawCoords.x) * this.ui_status.scale
         this.ui_status.origin.y += (offset * drawCoords.y) * this.ui_status.scale
@@ -410,9 +539,60 @@ export class NodeEditorView extends HTMLBoxView {
 
             this.drawGrids()
 
+            // Draw streams
+            this.draw_ctx.save()
+            this.draw_ctx.lineWidth = 3
+            this.draw_ctx.strokeStyle = COLOR_STREAM
+            for (const stream of this.streams) {
+                const in_node = this.nodes.get(stream.in_node)
+                const out_node = this.nodes.get(stream.out_node)
+                if(in_node && out_node) {
+                    if (stream.in_port >= 0 && stream.out_port >= 0 &&
+                        stream.in_port < in_node.ports.length &&
+                        stream.out_port < out_node.ports.length) {
+                        const in_loc: Vec2 = in_node.getPortLocation(this.draw_ctx, stream.in_port)
+                        const out_loc: Vec2 = out_node.getPortLocation(this.draw_ctx, stream.out_port)
+                        this.draw_ctx.beginPath()
+                        this.draw_ctx.moveTo(in_loc.x, in_loc.y)
+                        this.draw_ctx.lineTo(out_loc.x, out_loc.y)
+                        this.draw_ctx.stroke()
+                    }
+
+                }
+            }
+            this.draw_ctx.restore()
+            // Draw nodes
             for (const [id, node] of this.nodes) {
                 node.draw(this.draw_ctx, this.ui_status.selected_nodes.has(id))
             }
+
+            // Draw stream in progress
+            if (this.ui_status.mode == UIStatusMode.PortDrawing) {
+                const in_node = this.nodes.get(this.ui_status.lastPortNode)
+                if (in_node && this.ui_status.lastPort >= 0 && this.ui_status.lastPort < in_node.ports.length) {
+                    const in_loc: Vec2 = in_node.getPortLocation(this.draw_ctx, this.ui_status.lastPort)
+                    this.draw_ctx.save()
+                    this.draw_ctx.lineWidth = 3
+                    this.draw_ctx.strokeStyle = COLOR_STREAM
+                    this.draw_ctx.beginPath()
+                    this.draw_ctx.moveTo(in_loc.x, in_loc.y)
+                    this.draw_ctx.lineTo(this.ui_status.lastMouseDrawLoc.x, this.ui_status.lastMouseDrawLoc.y)
+                    this.draw_ctx.stroke()
+                    this.draw_ctx.restore()
+                }
+            }
+
+            // Draw status bar
+            this.draw_ctx.save()
+            this.draw_ctx.setTransform(1,0,0,1,0,0)
+            this.draw_ctx.font = "9px sans-serif"
+            this.draw_ctx.textAlign = "left"
+            this.draw_ctx.textBaseline = "bottom"
+            this.draw_ctx.fillStyle = "white"
+            let statusbar_text: string = "fluentjs-v0.0.1"
+            this.draw_ctx.fillText(statusbar_text, 5, this.canvas.height)
+            this.draw_ctx.restore()
+
         }
 
     }
@@ -474,8 +654,8 @@ export class NodeEditorView extends HTMLBoxView {
         padding: '2px',
         backgroundColor: '#232323',
       },
-      width: 500,
-      height: 400
+      width: 800,
+      height: 600
     })
 
         this.ui_status = new UIStatus()
@@ -489,19 +669,57 @@ export class NodeEditorView extends HTMLBoxView {
         this.el.appendChild(this.canvas)
 
         this.nodes = new Map<number, Node>()
+        this.streams = new Set<Stream>()
         this.last_node_uid = 0
         let node = new Node('Test node', new Vec2(1.2, 2.4))
-        node.ports.push({"is_output": true, "name": "Shorter port name", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Testing a really really really long port name", "type": PortType.Events})
+        node.ports.push({"is_output": true, "name": "Testing a really really really long port name", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Events port", "type": PortType.Events})
         node.ports.push({"is_output": false, "name": "Scalar port", "type": PortType.Scalar})
         node.ports.push({"is_output": false, "name": "Metadata port", "type": PortType.Metadata})
         node.ports.push({"is_output": false, "name": "String port", "type": PortType.String})
         node.ports.push({"is_output": false, "name": "Style port", "type": PortType.Style})
         this.nodes.set(0, node)
-        node = new Node('Second node', new Vec2(150, 120))
-        node.ports.push({"is_output": true, "name": "Out events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "In events", "type": PortType.Events})
+        node = new Node('FCS input', new Vec2(150, 120))
+        node.ports.push({"is_output": true, "name": "FCS events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Name: test_input_1.fcs", "type": PortType.String})
         this.nodes.set(1, node)
+        node = new Node('FCS input', new Vec2(150, 220))
+        node.ports.push({"is_output": true, "name": "FCS events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Name: test_input_2.fcs", "type": PortType.String})
+        this.nodes.set(2, node)
+        node = new Node('FCS input', new Vec2(150, 320))
+        node.ports.push({"is_output": true, "name": "FCS events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Name: test_input_3.fcs", "type": PortType.String})
+        this.nodes.set(3, node)
+        node = new Node('Event union', new Vec2(250, 120))
+        node.ports.push({"is_output": true, "name": "Combined events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
+        this.nodes.set(4, node)
+        node = new Node('Reduction gate', new Vec2(350, 200))
+        node.ports.push({"is_output": true, "name": "Gated events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Type: Polygon", "type": PortType.String})
+        node.ports.push({"is_output": false, "name": "Axis: FCS-A", "type": PortType.String})
+        node.ports.push({"is_output": false, "name": "Axis: SSC-A", "type": PortType.String})
+        this.nodes.set(5, node)
+        node = new Node('Density scatter', new Vec2(450, 120))
+        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Axis: FCS-A", "type": PortType.String})
+        node.ports.push({"is_output": false, "name": "Axis: SSC-A", "type": PortType.String})
+        node.ports.push({"is_output": false, "name": "Style", "type": PortType.Style})
+        this.nodes.set(6, node)
+        node = new Node('Histogram', new Vec2(450, 140))
+        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Axis: RFP-A", "type": PortType.String})
+        node.ports.push({"is_output": false, "name": "Style", "type": PortType.Style})
+        this.nodes.set(7, node)
+        node = new Node('Plot style', new Vec2(300, 320))
+        node.ports.push({"is_output": true, "name": "Loaded style", "type": PortType.Style})
+        node.ports.push({"is_output": false, "name": "Style name: nature", "type": PortType.String})
+        this.nodes.set(8, node)
+
 
         this.redraw()
     }
