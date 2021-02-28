@@ -309,7 +309,7 @@ export class NodeEditorView extends HTMLBoxView {
     getMouseCanvasLoc(ev: MouseEvent): Vec2 {
         if (this.canvas && this.draw_ctx) {
             const rect: DOMRect = this.canvas.getBoundingClientRect()
-            return new Vec2(ev.clientX - rect.top, ev.clientY - rect.left)
+            return new Vec2(ev.clientX - rect.left, ev.clientY - rect.top)
         }
         return new Vec2()
     }
