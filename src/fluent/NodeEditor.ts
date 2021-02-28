@@ -5,9 +5,27 @@ import {canvas} from "@bokehjs/core/dom"
 const COLOR_NODE_INTERIOR: string = "rgba(90, 90, 90, 0.75)"
 const COLOR_NODE_TITLE: string = "rgba(50, 50, 50, 0.75)"
 const COLOR_NODE_SHADOW: string = "rgba(0,0,0,0)"
+const COLOR_NODE_HIGHLIGHT: string = "white"
 const PORT_COLORS: string[] = ["rgb(161, 161, 161)", "rgb(99, 199, 99)", "rgb(99, 99, 199)", "rgb(199, 199, 41)", "rgb(229, 139, 86)"]
 
 
+enum UIStatusMode {
+    None,
+    CanvasDragging,
+    NodeDragging,
+    PortDrawing,
+}
+enum UIActionType {
+    NA,
+    Drag,
+    Port,
+    Internal
+}
+
+interface UIAction {
+    type: UIActionType
+    port_id?: number
+}
 
 enum PortType {
     Scalar = 0,
@@ -75,14 +93,16 @@ function pathUpperRoundedRectangle(ctx: CanvasRenderingContext2D, x: number, y: 
     }
 
 class UIStatus {
-    canvas_dragging: boolean
+    mode: UIStatusMode
     origin: Vec2
     scale: number
+    selected_nodes: Set<number>
 
     constructor() {
-        this.canvas_dragging = false
+        this.mode = UIStatusMode.None
         this.origin = {x: 0, y: 0}
         this.scale = 1.0
+        this.selected_nodes = new Set<number>()
     }
 
     /**
@@ -125,8 +145,9 @@ class Node {
     /**
      * Draws this node onto a canvas
      * @param ctx A canvas rendering context to draw with
+     * @param isSelected If the node is currently selected.
      */
-    draw(ctx: CanvasRenderingContext2D) {
+    draw(ctx: CanvasRenderingContext2D, isSelected: boolean) {
 
         const size: Vec2 = this.calculateSize(ctx)
         ctx.save()
@@ -136,9 +157,17 @@ class Node {
         ctx.shadowColor = 'black'
         ctx.shadowOffsetY = 7
 
-        pathRoundedRectangle(ctx, this.location.x, this.location.y, size.x, size.y, this.radius)
+        this.pathOutline(ctx, size)
         ctx.fillStyle = COLOR_NODE_INTERIOR
         ctx.fill()
+
+        if (isSelected) {
+            ctx.save()
+            ctx.strokeStyle = COLOR_NODE_HIGHLIGHT
+            ctx.lineWidth = 1
+            ctx.stroke()
+            ctx.restore()
+        }
 
         ctx.shadowBlur = 0
         ctx.shadowColor = COLOR_NODE_SHADOW
@@ -181,6 +210,21 @@ class Node {
         ctx.restore()
     }
 
+    pathOutline(ctx: CanvasRenderingContext2D, size: Vec2): void {
+        pathRoundedRectangle(ctx, this.location.x, this.location.y, size.x, size.y, this.radius)
+    }
+
+    handleMouse(ctx: CanvasRenderingContext2D, screen_coords: Vec2) : UIAction {
+        this.pathOutline(ctx,this.calculateSize(ctx))
+
+        if (ctx.isPointInPath(screen_coords.x, screen_coords.y)) {
+            return {'type': UIActionType.Drag}
+        } else {
+            return {'type': UIActionType.NA}
+        }
+
+    }
+
     /**
      * Calculates the size of the node, by the current context.
      * @param ctx A canvas rendering context to draw with
@@ -194,11 +238,8 @@ class Node {
         const title_width = ctx.measureText(this.name).width
 
         var max_width = title_width
-        console.log(max_width)
         this.ports.forEach((port: Port) => {
             max_width = Math.max(max_width, ctx.measureText(port.name).width)
-            console.log(ctx.measureText(port.name).width)
-            console.log(max_width)
         })
 
         ctx.restore()
@@ -207,6 +248,8 @@ class Node {
 
         return new Vec2(max_width + (this.radius * 2) + 10, 25 + (this.font_size * this.ports.length * 2))
     }
+
+
 }
 
 export class NodeEditorView extends HTMLBoxView {
@@ -214,6 +257,8 @@ export class NodeEditorView extends HTMLBoxView {
     canvas: HTMLCanvasElement
     draw_ctx: CanvasRenderingContext2D | null
     ui_status: UIStatus
+    nodes: Map<number, Node>
+    last_node_uid: number
 
     connect_signals(): void {
         super.connect_signals()
@@ -225,11 +270,59 @@ export class NodeEditorView extends HTMLBoxView {
      * @param ev The mouse event associated with the mouse down event
      */
     handleMouseDown(ev: MouseEvent) {
-        if (ev.button == 1) {
-            this.ui_status.canvas_dragging = true
-            ev.preventDefault()
-        }
+        if (this.draw_ctx) {
+            const rect: DOMRect = this.canvas.getBoundingClientRect()
+            const mouseLoc: Vec2 = new Vec2(ev.clientX - rect.top, ev.clientY - rect.left)
 
+            switch (ev.button) {
+                case 0: {
+                    // Check each node to see if we are selecting it
+                    let lastAction: UIAction = {type: UIActionType.NA}
+                    let lastId: number | undefined
+                    for (const [id, node] of this.nodes) {
+                        const action: UIAction = node.handleMouse(this.draw_ctx, mouseLoc)
+                        if (action.type != UIActionType.NA) {
+                            lastAction = action
+                            lastId = id
+                        }
+                    }
+                    // Deselect nodes if we didn't click a node
+                    if (lastAction.type == UIActionType.NA) {
+                        this.ui_status.selected_nodes.clear()
+                    }
+
+                    if (lastAction.type == UIActionType.Drag && lastId != undefined) {
+                        // Check status. First, if we are NOT holding shift and we clicked
+                        // a previously unselected item, we should clear the selected node list
+                        if (!ev.shiftKey && !this.ui_status.selected_nodes.has(lastId)) {
+                            this.ui_status.selected_nodes.clear()
+                        }
+                        
+                        // Add this node to the selected list if it isn't already:
+                        if (!this.ui_status.selected_nodes.has(lastId)) {
+                            this.ui_status.selected_nodes.add(lastId)
+                        }
+                    }
+
+                    // If we have > 0 selected nodes, go into drag mode
+                    if (this.ui_status.selected_nodes.size > 0) {
+                        this.ui_status.mode = UIStatusMode.NodeDragging
+                    }
+                    this.redraw()
+                    break
+                }
+                case 1: {
+                    if (this.ui_status.mode == UIStatusMode.None) {
+                        this.ui_status.mode = UIStatusMode.CanvasDragging
+                    }
+                    ev.preventDefault()
+                    break
+                }
+                default: {
+                    break
+                }
+            }
+        }
     }
 
     /**
@@ -238,11 +331,22 @@ export class NodeEditorView extends HTMLBoxView {
      * @param ev The mouse event associated with the mouse up event
      */
     handleMouseUp(ev: MouseEvent) {
-        if (ev.button == 1) {
-            this.ui_status.canvas_dragging = false
-            ev.preventDefault()
+        switch (ev.button) {
+            case 0: {
+                this.ui_status.mode = UIStatusMode.None
+                break
+            }
+            case 1: {
+                if (this.ui_status.mode == UIStatusMode.CanvasDragging) {
+                    this.ui_status.mode = UIStatusMode.None
+                }
+                ev.preventDefault()
+                break
+            }
+            default: {
+                break
+            }
         }
-
     }
 
     /**
@@ -251,10 +355,27 @@ export class NodeEditorView extends HTMLBoxView {
      * @param ev The mouse event associated with the mouse move event
      */
     handleMouseMove(ev: MouseEvent) {
-        if (this.ui_status.canvas_dragging) {
-            this.ui_status.origin.x += ev.movementX
-            this.ui_status.origin.y += ev.movementY
-            this.redraw()
+        switch (this.ui_status.mode) {
+            case UIStatusMode.CanvasDragging: {
+                this.ui_status.origin.x += ev.movementX
+                this.ui_status.origin.y += ev.movementY
+                this.redraw()
+                break
+            }
+            case UIStatusMode.NodeDragging: {
+                for (const id of this.ui_status.selected_nodes) {
+                    const node = this.nodes.get(id)
+                    if (node) {
+                        node.location.x += ev.movementX / this.ui_status.scale
+                        node.location.y += ev.movementY / this.ui_status.scale
+                    }
+                }
+                this.redraw()
+                break
+            }
+            default: {
+                break
+            }
         }
     }
 
@@ -267,7 +388,6 @@ export class NodeEditorView extends HTMLBoxView {
             x: ev.clientX - rect.left,
             y: ev.clientY - rect.top
         })
-        console.log('cx:', ev.clientX, 'cy:', ev.clientY)
         const offset: number = .03 * Math.sign(ev.deltaY)
         this.ui_status.origin.x += (offset * drawCoords.x) * this.ui_status.scale
         this.ui_status.origin.y += (offset * drawCoords.y) * this.ui_status.scale
@@ -283,27 +403,16 @@ export class NodeEditorView extends HTMLBoxView {
             const scale = this.ui_status.scale
             const origin = this.ui_status.origin
 
-            const upperLeft = this.ui_status.canvasToDrawCoord({x: 0, y: 0})
-            const bottomRight = this.ui_status.canvasToDrawCoord({
-                x: this.canvas.width,
-                y: this.canvas.height
-            })
-            console.log("UL:", upperLeft, "BR:", bottomRight)
-
             // Clear by clearing/setting transform
             this.draw_ctx.setTransform(1,0,0,1,0,0)
             this.draw_ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
             this.draw_ctx.setTransform(scale, 0, 0, scale, origin.x, origin.y)
 
             this.drawGrids()
-            const node = new Node('Test node', new Vec2(1.2, 2.4))
-            node.ports.push({"is_output": true, "name": "Shorter port name", "type": PortType.Events})
-            node.ports.push({"is_output": false, "name": "Testing a really really really long port name", "type": PortType.Events})
-            node.ports.push({"is_output": false, "name": "Scalar port", "type": PortType.Scalar})
-            node.ports.push({"is_output": false, "name": "Metadata port", "type": PortType.Metadata})
-            node.ports.push({"is_output": false, "name": "String port", "type": PortType.String})
-            node.ports.push({"is_output": false, "name": "Style port", "type": PortType.Style})
-            node.draw(this.draw_ctx)
+
+            for (const [id, node] of this.nodes) {
+                node.draw(this.draw_ctx, this.ui_status.selected_nodes.has(id))
+            }
         }
 
     }
@@ -370,7 +479,6 @@ export class NodeEditorView extends HTMLBoxView {
     })
 
         this.ui_status = new UIStatus()
-        console.log(this.ui_status)
         // Setup mouse events
         this.canvas.addEventListener("mousedown", (ev) => this.handleMouseDown(ev))
         this.canvas.addEventListener("mouseup", (ev) => this.handleMouseUp(ev))
@@ -379,6 +487,21 @@ export class NodeEditorView extends HTMLBoxView {
         
         this.draw_ctx = this.canvas.getContext("2d")
         this.el.appendChild(this.canvas)
+
+        this.nodes = new Map<number, Node>()
+        this.last_node_uid = 0
+        let node = new Node('Test node', new Vec2(1.2, 2.4))
+        node.ports.push({"is_output": true, "name": "Shorter port name", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Testing a really really really long port name", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "Scalar port", "type": PortType.Scalar})
+        node.ports.push({"is_output": false, "name": "Metadata port", "type": PortType.Metadata})
+        node.ports.push({"is_output": false, "name": "String port", "type": PortType.String})
+        node.ports.push({"is_output": false, "name": "Style port", "type": PortType.Style})
+        this.nodes.set(0, node)
+        node = new Node('Second node', new Vec2(150, 120))
+        node.ports.push({"is_output": true, "name": "Out events", "type": PortType.Events})
+        node.ports.push({"is_output": false, "name": "In events", "type": PortType.Events})
+        this.nodes.set(1, node)
 
         this.redraw()
     }
