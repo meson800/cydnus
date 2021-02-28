@@ -585,7 +585,7 @@ export class NodeEditorView extends HTMLBoxView {
             // Draw status bar
             this.draw_ctx.save()
             this.draw_ctx.setTransform(1,0,0,1,0,0)
-            this.draw_ctx.font = "9px sans-serif"
+            this.draw_ctx.font = "11px sans-serif"
             this.draw_ctx.textAlign = "left"
             this.draw_ctx.textBaseline = "bottom"
             this.draw_ctx.fillStyle = "white"
