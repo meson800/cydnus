@@ -673,6 +673,8 @@ export class NodeEditorView extends HTMLBoxView {
         this.canvas.addEventListener("mouseup", (ev) => this.handleMouseUp(ev))
         this.canvas.addEventListener("mousemove", (ev) => this.handleMouseMove(ev))
         this.canvas.addEventListener("wheel", (ev) => this.handleWheel(ev))
+        this.canvas.style.fontKerning = "normal"
+        this.canvas.style.textRendering = "optimizelegibility"
         
         this.draw_ctx = this.canvas.getContext("2d")
         this.el.appendChild(this.canvas)
