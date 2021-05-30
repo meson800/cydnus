@@ -1,34 +1,41 @@
 import {HTMLBox, HTMLBoxView} from "@bokehjs/models/layouts/html_box"
 import {canvas} from "@bokehjs/core/dom"
+import * as bprop from "@bokehjs/core/properties"
+import * as btypes from "@bokehjs/core/types"
+
+import {Node} from "./node_models"
+
+// Following the example of
+// https://github.com/bokeh/bokeh/blob/35c49c5865d574601bcd4627484905a4071366a0/bokehjs/src/lib/core/bokeh_events.ts#L9
 
 // CONSTANT COLORS
-const COLOR_NODE_INTERIOR: string = "rgba(90, 90, 90, 0.75)"
-const COLOR_NODE_TITLE: string = "rgba(50, 50, 50, 0.75)"
-const COLOR_NODE_SHADOW: string = "rgba(0,0,0,0)"
-const COLOR_NODE_HIGHLIGHT: string = "white"
+const COLOR_IntNode_INTERIOR: string = "rgba(90, 90, 90, 0.75)"
+const COLOR_IntNode_TITLE: string = "rgba(50, 50, 50, 0.75)"
+const COLOR_IntNode_SHADOW: string = "rgba(0,0,0,0)"
+const COLOR_IntNode_HIGHLIGHT: string = "white"
 const COLOR_STREAM: string = "white"
-const PORT_COLORS: string[] = ["rgb(161, 161, 161)", "rgb(99, 199, 99)", "rgb(99, 99, 199)", "rgb(199, 199, 41)", "rgb(229, 139, 86)"]
+const IntPort_COLORS: string[] = ["rgb(161, 161, 161)", "rgb(99, 199, 99)", "rgb(99, 99, 199)", "rgb(199, 199, 41)", "rgb(229, 139, 86)"]
 
 
 enum UIStatusMode {
     None,
     CanvasDragging,
-    NodeDragging,
-    PortDrawing,
+    IntNodeDragging,
+    IntPortDrawing,
 }
 enum UIActionType {
     NA,
     Drag,
-    Port,
+    IntPort,
     Internal
 }
 
 interface UIAction {
     type: UIActionType
-    port_id?: number
+    IntPort_id?: number
 }
 
-enum PortType {
+enum IntPortType {
     Scalar = 0,
     Events = 1,
     String = 2,
@@ -36,17 +43,17 @@ enum PortType {
     Style = 4,
 }
 
-interface Port {
+interface IntPort {
     is_output: boolean
-    type: PortType
+    type: IntPortType
     name: string
 }
 
 interface Stream {
-    out_node: number,
-    out_port: number,
-    in_node: number,
-    in_port: number
+    out_IntNode: number,
+    out_IntPort: number,
+    in_IntNode: number,
+    in_IntPort: number
 }
 
 class Vec2 {
@@ -104,19 +111,19 @@ class UIStatus {
     mode: UIStatusMode
     origin: Vec2
     scale: number
-    selected_nodes: Set<number>
+    selected_IntNodes: Set<number>
     lastMouseDrawLoc: Vec2
-    lastPortNode: number
-    lastPort: number
+    lastIntPortIntNode: number
+    lastIntPort: number
 
     constructor() {
         this.mode = UIStatusMode.None
         this.origin = {x: 0, y: 0}
         this.scale = 1.0
-        this.selected_nodes = new Set<number>()
+        this.selected_IntNodes = new Set<number>()
         this.lastMouseDrawLoc = {x: 0, y: 0}
-        this.lastPortNode = 0
-        this.lastPort = 0
+        this.lastIntPortIntNode = 0
+        this.lastIntPort = 0
     }
 
     /**
@@ -144,12 +151,12 @@ class UIStatus {
     }
 }
 
-class Node {
+class IntNode {
     name: string
     location: Vec2
     radius: number = 8
     font_size: number = 9
-    ports: Port[] = []
+    IntPorts: IntPort[] = []
 
     constructor(name: string, loc: Vec2) {
         this.name = name
@@ -157,38 +164,38 @@ class Node {
     }
 
     /**
-     * Draws this node onto a canvas
+     * Draws this IntNode onto a canvas
      * @param ctx A canvas rendering context to draw with
-     * @param isSelected If the node is currently selected.
+     * @param isSelected If the IntNode is currently selected.
      */
     draw(ctx: CanvasRenderingContext2D, isSelected: boolean) {
 
         const size: Vec2 = this.calculateSize(ctx)
         ctx.save()
 
-        // Draw main node rectangle
+        // Draw main IntNode rectangle
         ctx.shadowBlur = 12
         ctx.shadowColor = 'black'
         ctx.shadowOffsetY = 7
 
         this.pathOutline(ctx, size)
-        ctx.fillStyle = COLOR_NODE_INTERIOR
+        ctx.fillStyle = COLOR_IntNode_INTERIOR
         ctx.fill()
 
         if (isSelected) {
             ctx.save()
-            ctx.strokeStyle = COLOR_NODE_HIGHLIGHT
+            ctx.strokeStyle = COLOR_IntNode_HIGHLIGHT
             ctx.lineWidth = 1
             ctx.stroke()
             ctx.restore()
         }
 
         ctx.shadowBlur = 0
-        ctx.shadowColor = COLOR_NODE_SHADOW
+        ctx.shadowColor = COLOR_IntNode_SHADOW
         ctx.shadowOffsetY = 0
 
         pathUpperRoundedRectangle(ctx, this.location.x, this.location.y, size.x, 14, this.radius)
-        ctx.fillStyle = COLOR_NODE_TITLE
+        ctx.fillStyle = COLOR_IntNode_TITLE
         ctx.fill()
 
         // Draw text
@@ -198,22 +205,22 @@ class Node {
         ctx.fillStyle = "white"
         ctx.fillText(this.name, this.location.x + this.radius, this.location.y + this.font_size + 1)
 
-        // Draw ports
-        for (var i: number = 0; i < this.ports.length; i++) {
-            const port = this.ports[i]
-            ctx.fillStyle = PORT_COLORS[port.type]
+        // Draw IntPorts
+        for (var i: number = 0; i < this.IntPorts.length; i++) {
+            const IntPort = this.IntPorts[i]
+            ctx.fillStyle = IntPort_COLORS[IntPort.type]
             ctx.strokeStyle = "black"
             ctx.lineWidth = 1
 
-            const port_loc: Vec2 = this._getPortLocation(size, i)
-            this.pathPort(ctx, size, i)
+            const IntPort_loc: Vec2 = this._getIntPortLocation(size, i)
+            this.pathIntPort(ctx, size, i)
             ctx.fill()
             ctx.stroke()
 
-            ctx.textAlign = port.is_output ? "right" : "left"
+            ctx.textAlign = IntPort.is_output ? "right" : "left"
             ctx.textBaseline = "middle"
             ctx.fillStyle = "white"
-            ctx.fillText(port.name, port_loc.x + (10 * (port.is_output ? -1 : 1)), port_loc.y)
+            ctx.fillText(IntPort.name, IntPort_loc.x + (10 * (IntPort.is_output ? -1 : 1)), IntPort_loc.y)
 
         }
         ctx.restore()
@@ -223,23 +230,23 @@ class Node {
         pathRoundedRectangle(ctx, this.location.x, this.location.y, size.x, size.y, this.radius)
     }
 
-    _getPortLocation(size: Vec2, port_idx: number): Vec2 {
-        const port: Port = this.ports[port_idx]
+    _getIntPortLocation(size: Vec2, IntPort_idx: number): Vec2 {
+        const IntPort: IntPort = this.IntPorts[IntPort_idx]
         return new Vec2(
-            this.location.x + (port.is_output ? size.x : 0),
-            this.location.y + 25 + (port_idx * 2 * this.font_size))
+            this.location.x + (IntPort.is_output ? size.x : 0),
+            this.location.y + 25 + (IntPort_idx * 2 * this.font_size))
     }
 
-    getPortLocation(ctx: CanvasRenderingContext2D, port_idx: number): Vec2 {
-        return this._getPortLocation(this.calculateSize(ctx), port_idx)
+    getIntPortLocation(ctx: CanvasRenderingContext2D, IntPort_idx: number): Vec2 {
+        return this._getIntPortLocation(this.calculateSize(ctx), IntPort_idx)
     }
 
-    pathPort(ctx: CanvasRenderingContext2D, size: Vec2, port_idx: number): void {
-        if (port_idx >= 0 && port_idx < this.ports.length) {
-            const port_loc = this._getPortLocation(size, port_idx)
+    pathIntPort(ctx: CanvasRenderingContext2D, size: Vec2, IntPort_idx: number): void {
+        if (IntPort_idx >= 0 && IntPort_idx < this.IntPorts.length) {
+            const IntPort_loc = this._getIntPortLocation(size, IntPort_idx)
 
             ctx.beginPath()
-            ctx.arc(port_loc.x, port_loc.y, 5, 0, 2 * Math.PI)
+            ctx.arc(IntPort_loc.x, IntPort_loc.y, 5, 0, 2 * Math.PI)
             ctx.closePath()
         }
     }
@@ -247,11 +254,11 @@ class Node {
     handleMouse(ctx: CanvasRenderingContext2D, screen_coords: Vec2) : UIAction {
         const size: Vec2 = this.calculateSize(ctx)
 
-        // Check each of the ports:
-        for (let i: number = 0; i < this.ports.length; i++) {
-            this.pathPort(ctx, size, i)
+        // Check each of the IntPorts:
+        for (let i: number = 0; i < this.IntPorts.length; i++) {
+            this.pathIntPort(ctx, size, i)
             if (ctx.isPointInPath(screen_coords.x, screen_coords.y)) {
-                return {'type': UIActionType.Port, 'port_id': i}
+                return {'type': UIActionType.IntPort, 'IntPort_id': i}
             }
         }
 
@@ -266,7 +273,7 @@ class Node {
     }
 
     /**
-     * Calculates the size of the node, by the current context.
+     * Calculates the size of the IntNode, by the current context.
      * @param ctx A canvas rendering context to draw with
      */
     calculateSize(ctx: CanvasRenderingContext2D): Vec2 {
@@ -278,29 +285,30 @@ class Node {
         const title_width = ctx.measureText(this.name).width
 
         var max_width = title_width
-        this.ports.forEach((port: Port) => {
-            max_width = Math.max(max_width, ctx.measureText(port.name).width)
+        this.IntPorts.forEach((IntPort: IntPort) => {
+            max_width = Math.max(max_width, ctx.measureText(IntPort.name).width)
         })
 
         ctx.restore()
 
-        // Allocate font_size * 2 for each port
+        // Allocate font_size * 2 for each IntPort
 
-        return new Vec2(max_width + (this.radius * 2) + 10, 25 + (this.font_size * this.ports.length * 2))
+        return new Vec2(max_width + (this.radius * 2) + 10, 25 + (this.font_size * this.IntPorts.length * 2))
     }
 
 
 }
 
 export class NodeEditorView extends HTMLBoxView {
+    model: NodeEditor
 
     canvas: HTMLCanvasElement
     draw_ctx: CanvasRenderingContext2D | null
     ui_status: UIStatus
-    nodes: Map<number, Node>
+    nodes: Map<number, IntNode>
     streams: Set<Stream>
 
-    last_node_uid: number
+    last_IntNode_uid: number
 
     connect_signals(): void {
         super.connect_signals()
@@ -329,61 +337,61 @@ export class NodeEditorView extends HTMLBoxView {
 
             switch (ev.button) {
                 case 0: {
-                    // Check each node to see if we are selecting it
+                    // Check each IntNode to see if we are selecting it
                     let lastAction: UIAction = {type: UIActionType.NA}
                     let lastId: number | undefined
-                    for (const [id, node] of this.nodes) {
-                        const action: UIAction = node.handleMouse(this.draw_ctx, mouseCanvasLoc)
+                    for (const [id, IntNode] of this.nodes) {
+                        const action: UIAction = IntNode.handleMouse(this.draw_ctx, mouseCanvasLoc)
                         if (action.type != UIActionType.NA) {
                             lastAction = action
                             lastId = id
                         }
                     }
-                    // Deselect nodes if we didn't click a node
+                    // Deselect IntNodes if we didn't click a IntNode
                     if (lastAction.type == UIActionType.NA) {
-                        this.ui_status.selected_nodes.clear()
+                        this.ui_status.selected_IntNodes.clear()
                     }
 
                     if (lastAction.type == UIActionType.Drag && lastId != undefined) {
                         // Check status. First, if we are NOT holding shift and we clicked
-                        // a previously unselected item, we should clear the selected node list
-                        if (!ev.shiftKey && !this.ui_status.selected_nodes.has(lastId)) {
-                            this.ui_status.selected_nodes.clear()
+                        // a previously unselected item, we should clear the selected IntNode list
+                        if (!ev.shiftKey && !this.ui_status.selected_IntNodes.has(lastId)) {
+                            this.ui_status.selected_IntNodes.clear()
                         }
                         
-                        // Add this node to the selected list if it isn't already:
-                        if (!this.ui_status.selected_nodes.has(lastId)) {
-                            this.ui_status.selected_nodes.add(lastId)
+                        // Add this IntNode to the selected list if it isn't already:
+                        if (!this.ui_status.selected_IntNodes.has(lastId)) {
+                            this.ui_status.selected_IntNodes.add(lastId)
                         }
 
-                        // If we have > 0 selected nodes, go into drag mode
-                        if (this.ui_status.selected_nodes.size > 0) {
-                            this.ui_status.mode = UIStatusMode.NodeDragging
+                        // If we have > 0 selected IntNodes, go into drag mode
+                        if (this.ui_status.selected_IntNodes.size > 0) {
+                            this.ui_status.mode = UIStatusMode.IntNodeDragging
                         }
-                    } else if (lastAction.type == UIActionType.Port && lastId != undefined &&
-                        lastAction.port_id != undefined) {
+                    } else if (lastAction.type == UIActionType.IntPort && lastId != undefined &&
+                        lastAction.IntPort_id != undefined) {
                         // Start drawing :)
-                        this.ui_status.mode = UIStatusMode.PortDrawing
+                        this.ui_status.mode = UIStatusMode.IntPortDrawing
                         this.ui_status.lastMouseDrawLoc = this.getMouseDrawLoc(ev)
 
-                        const select_node = this.nodes.get(lastId)
-                        if (select_node && lastAction.port_id >= 0 && lastAction.port_id < select_node.ports.length) {
-                            this.ui_status.lastPortNode = lastId
-                            this.ui_status.lastPort = lastAction.port_id
-                            // If this is an input node, disconnect the stream if it exists
-                            if (!select_node.ports[lastAction.port_id].is_output) {
+                        const select_IntNode = this.nodes.get(lastId)
+                        if (select_IntNode && lastAction.IntPort_id >= 0 && lastAction.IntPort_id < select_IntNode.IntPorts.length) {
+                            this.ui_status.lastIntPortIntNode = lastId
+                            this.ui_status.lastIntPort = lastAction.IntPort_id
+                            // If this is an input IntNode, disconnect the stream if it exists
+                            if (!select_IntNode.IntPorts[lastAction.IntPort_id].is_output) {
                                 let prior_stream: Stream | undefined = undefined
                                 this.streams.forEach(stream => {
-                                    if (stream.in_node == lastId && stream.in_port == lastAction.port_id) {
+                                    if (stream.in_IntNode == lastId && stream.in_IntPort == lastAction.IntPort_id) {
                                         prior_stream = stream
-                                        this.ui_status.lastPortNode = stream.out_node
-                                        this.ui_status.lastPort = stream.out_port
+                                        this.ui_status.lastIntPortIntNode = stream.out_IntNode
+                                        this.ui_status.lastIntPort = stream.out_IntPort
                                     }
 
-                                    if (stream.out_node == lastId && stream.out_port == lastAction.port_id) {
+                                    if (stream.out_IntNode == lastId && stream.out_IntPort == lastAction.IntPort_id) {
                                         prior_stream = stream
-                                        this.ui_status.lastPortNode = stream.in_node
-                                        this.ui_status.lastPort = stream.in_port
+                                        this.ui_status.lastIntPortIntNode = stream.in_IntNode
+                                        this.ui_status.lastIntPort = stream.in_IntPort
                                     }
                                 })
                                 if (prior_stream) {
@@ -421,37 +429,37 @@ export class NodeEditorView extends HTMLBoxView {
             switch (ev.button) {
                 case 0: {
 
-                    if (this.ui_status.mode == UIStatusMode.PortDrawing) {
+                    if (this.ui_status.mode == UIStatusMode.IntPortDrawing) {
                         // Check to see if we can complete a stream
                         let lastAction: UIAction = {type: UIActionType.NA}
                         let lastId: number | undefined
-                        for (const [id, node] of this.nodes) {
-                            const action: UIAction = node.handleMouse(this.draw_ctx, mouseCanvasLoc)
+                        for (const [id, IntNode] of this.nodes) {
+                            const action: UIAction = IntNode.handleMouse(this.draw_ctx, mouseCanvasLoc)
                             if (action.type != UIActionType.NA) {
                                 lastAction = action
                                 lastId = id
                             }
                         }
 
-                        if (lastAction.type == UIActionType.Port && lastId != undefined && lastAction.port_id != undefined) {
+                        if (lastAction.type == UIActionType.IntPort && lastId != undefined && lastAction.IntPort_id != undefined) {
                             const stream: Stream = {
-                                'in_node': this.ui_status.lastPortNode,
-                                'in_port': this.ui_status.lastPort,
-                                'out_node': lastId,
-                                'out_port': lastAction.port_id
+                                'in_IntNode': this.ui_status.lastIntPortIntNode,
+                                'in_IntPort': this.ui_status.lastIntPort,
+                                'out_IntNode': lastId,
+                                'out_IntPort': lastAction.IntPort_id
                             }
 
-                            const in_node = this.nodes.get(stream.in_node)
-                            const out_node = this.nodes.get(stream.out_node)
-                            if (in_node && out_node
-                                && stream.in_port >= 0 && stream.in_port < in_node.ports.length
-                                && stream.out_port >= 0 && stream.out_port < out_node.ports.length) {
-                                    const in_port = in_node.ports[stream.in_port]
-                                    const out_port = out_node.ports[stream.out_port]
+                            const in_IntNode = this.nodes.get(stream.in_IntNode)
+                            const out_IntNode = this.nodes.get(stream.out_IntNode)
+                            if (in_IntNode && out_IntNode
+                                && stream.in_IntPort >= 0 && stream.in_IntPort < in_IntNode.IntPorts.length
+                                && stream.out_IntPort >= 0 && stream.out_IntPort < out_IntNode.IntPorts.length) {
+                                    const in_IntPort = in_IntNode.IntPorts[stream.in_IntPort]
+                                    const out_IntPort = out_IntNode.IntPorts[stream.out_IntPort]
 
-                                    if (stream.in_node != stream.out_node
-                                        && in_port.is_output != out_port.is_output
-                                        && in_port.type == out_port.type) {
+                                    if (stream.in_IntNode != stream.out_IntNode
+                                        && in_IntPort.is_output != out_IntPort.is_output
+                                        && in_IntPort.type == out_IntPort.type) {
                                         
                                         this.streams.add(stream)
                                     }
@@ -490,17 +498,17 @@ export class NodeEditorView extends HTMLBoxView {
                 this.redraw()
                 break
             }
-            case UIStatusMode.PortDrawing: {
+            case UIStatusMode.IntPortDrawing: {
                 this.ui_status.lastMouseDrawLoc = this.getMouseDrawLoc(ev)
                 this.redraw()
                 break
             }
-            case UIStatusMode.NodeDragging: {
-                for (const id of this.ui_status.selected_nodes) {
-                    const node = this.nodes.get(id)
-                    if (node) {
-                        node.location.x += ev.movementX / this.ui_status.scale
-                        node.location.y += ev.movementY / this.ui_status.scale
+            case UIStatusMode.IntNodeDragging: {
+                for (const id of this.ui_status.selected_IntNodes) {
+                    const IntNode = this.nodes.get(id)
+                    if (IntNode) {
+                        IntNode.location.x += ev.movementX / this.ui_status.scale
+                        IntNode.location.y += ev.movementY / this.ui_status.scale
                     }
                 }
                 this.redraw()
@@ -528,6 +536,7 @@ export class NodeEditorView extends HTMLBoxView {
      * Redraws the canvas element, using ui_status to set the drawing functions
      */
     redraw() {
+        console.log(this.model)
         if (this.draw_ctx) {
             const scale = this.ui_status.scale
             const origin = this.ui_status.origin
@@ -544,14 +553,14 @@ export class NodeEditorView extends HTMLBoxView {
             this.draw_ctx.lineWidth = 3
             this.draw_ctx.strokeStyle = COLOR_STREAM
             for (const stream of this.streams) {
-                const in_node = this.nodes.get(stream.in_node)
-                const out_node = this.nodes.get(stream.out_node)
-                if(in_node && out_node) {
-                    if (stream.in_port >= 0 && stream.out_port >= 0 &&
-                        stream.in_port < in_node.ports.length &&
-                        stream.out_port < out_node.ports.length) {
-                        const in_loc: Vec2 = in_node.getPortLocation(this.draw_ctx, stream.in_port)
-                        const out_loc: Vec2 = out_node.getPortLocation(this.draw_ctx, stream.out_port)
+                const in_IntNode = this.nodes.get(stream.in_IntNode)
+                const out_IntNode = this.nodes.get(stream.out_IntNode)
+                if(in_IntNode && out_IntNode) {
+                    if (stream.in_IntPort >= 0 && stream.out_IntPort >= 0 &&
+                        stream.in_IntPort < in_IntNode.IntPorts.length &&
+                        stream.out_IntPort < out_IntNode.IntPorts.length) {
+                        const in_loc: Vec2 = in_IntNode.getIntPortLocation(this.draw_ctx, stream.in_IntPort)
+                        const out_loc: Vec2 = out_IntNode.getIntPortLocation(this.draw_ctx, stream.out_IntPort)
                         this.draw_ctx.beginPath()
                         this.draw_ctx.moveTo(in_loc.x, in_loc.y)
                         this.draw_ctx.lineTo(out_loc.x, out_loc.y)
@@ -561,16 +570,16 @@ export class NodeEditorView extends HTMLBoxView {
                 }
             }
             this.draw_ctx.restore()
-            // Draw nodes
-            for (const [id, node] of this.nodes) {
-                node.draw(this.draw_ctx, this.ui_status.selected_nodes.has(id))
+            // Draw IntNodes
+            for (const [id, IntNode] of this.nodes) {
+                IntNode.draw(this.draw_ctx, this.ui_status.selected_IntNodes.has(id))
             }
 
             // Draw stream in progress
-            if (this.ui_status.mode == UIStatusMode.PortDrawing) {
-                const in_node = this.nodes.get(this.ui_status.lastPortNode)
-                if (in_node && this.ui_status.lastPort >= 0 && this.ui_status.lastPort < in_node.ports.length) {
-                    const in_loc: Vec2 = in_node.getPortLocation(this.draw_ctx, this.ui_status.lastPort)
+            if (this.ui_status.mode == UIStatusMode.IntPortDrawing) {
+                const in_IntNode = this.nodes.get(this.ui_status.lastIntPortIntNode)
+                if (in_IntNode && this.ui_status.lastIntPort >= 0 && this.ui_status.lastIntPort < in_IntNode.IntPorts.length) {
+                    const in_loc: Vec2 = in_IntNode.getIntPortLocation(this.draw_ctx, this.ui_status.lastIntPort)
                     this.draw_ctx.save()
                     this.draw_ctx.lineWidth = 3
                     this.draw_ctx.strokeStyle = COLOR_STREAM
@@ -668,62 +677,34 @@ export class NodeEditorView extends HTMLBoxView {
         this.draw_ctx = this.canvas.getContext("2d")
         this.el.appendChild(this.canvas)
 
-        this.nodes = new Map<number, Node>()
+        this.nodes = new Map<number, IntNode>()
         this.streams = new Set<Stream>()
-        this.last_node_uid = 0
-        let node = new Node('Test node', new Vec2(1.2, 2.4))
-        node.ports.push({"is_output": true, "name": "Testing a really really really long port name", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Events port", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Scalar port", "type": PortType.Scalar})
-        node.ports.push({"is_output": false, "name": "Metadata port", "type": PortType.Metadata})
-        node.ports.push({"is_output": false, "name": "String port", "type": PortType.String})
-        node.ports.push({"is_output": false, "name": "Style port", "type": PortType.Style})
+        this.last_IntNode_uid = 0
+        let node = new IntNode('Test IntNode', new Vec2(1.2, 2.4))
+        node.IntPorts.push({"is_output": true, "name": "Testing a really really really long IntPort name", "type": IntPortType.Events})
+        node.IntPorts.push({"is_output": false, "name": "Events IntPort", "type": IntPortType.Events})
+        node.IntPorts.push({"is_output": false, "name": "Scalar IntPort", "type": IntPortType.Scalar})
+        node.IntPorts.push({"is_output": false, "name": "Metadata IntPort", "type": IntPortType.Metadata})
+        node.IntPorts.push({"is_output": false, "name": "String IntPort", "type": IntPortType.String})
+        node.IntPorts.push({"is_output": false, "name": "Style IntPort", "type": IntPortType.Style})
         this.nodes.set(0, node)
-        node = new Node('FCS input', new Vec2(150, 120))
-        node.ports.push({"is_output": true, "name": "FCS events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Name: test_input_1.fcs", "type": PortType.String})
-        this.nodes.set(1, node)
-        node = new Node('FCS input', new Vec2(150, 220))
-        node.ports.push({"is_output": true, "name": "FCS events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Name: test_input_2.fcs", "type": PortType.String})
-        this.nodes.set(2, node)
-        node = new Node('FCS input', new Vec2(150, 320))
-        node.ports.push({"is_output": true, "name": "FCS events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Name: test_input_3.fcs", "type": PortType.String})
-        this.nodes.set(3, node)
-        node = new Node('Event union', new Vec2(250, 120))
-        node.ports.push({"is_output": true, "name": "Combined events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
-        this.nodes.set(4, node)
-        node = new Node('Reduction gate', new Vec2(350, 200))
-        node.ports.push({"is_output": true, "name": "Gated events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Type: Polygon", "type": PortType.String})
-        node.ports.push({"is_output": false, "name": "Axis: FCS-A", "type": PortType.String})
-        node.ports.push({"is_output": false, "name": "Axis: SSC-A", "type": PortType.String})
-        this.nodes.set(5, node)
-        node = new Node('Density scatter', new Vec2(450, 120))
-        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Axis: FCS-A", "type": PortType.String})
-        node.ports.push({"is_output": false, "name": "Axis: SSC-A", "type": PortType.String})
-        node.ports.push({"is_output": false, "name": "Style", "type": PortType.Style})
-        this.nodes.set(6, node)
-        node = new Node('Histogram', new Vec2(450, 140))
-        node.ports.push({"is_output": false, "name": "Events", "type": PortType.Events})
-        node.ports.push({"is_output": false, "name": "Axis: RFP-A", "type": PortType.String})
-        node.ports.push({"is_output": false, "name": "Style", "type": PortType.Style})
-        this.nodes.set(7, node)
-        node = new Node('Plot style', new Vec2(300, 320))
-        node.ports.push({"is_output": true, "name": "Loaded style", "type": PortType.Style})
-        node.ports.push({"is_output": false, "name": "Style name: nature", "type": PortType.String})
-        this.nodes.set(8, node)
-
 
         this.redraw()
     }
 }
+
+export type PortColorsProp = {[key: string]: btypes.Color}
+
+export namespace NodeEditor {
+    export type Attrs = bprop.AttrsOf<Props>
+
+    export type Props = {
+        nodes: bprop.Property<{[key: string]: Node}>,
+        port_colors: bprop.Property<PortColorsProp>
+    }
+}
+
+export interface NodeEditor extends NodeEditor.Attrs {}
 
 export class NodeEditor extends HTMLBox {
     static __name__ = "NodeEditor"
@@ -731,5 +712,12 @@ export class NodeEditor extends HTMLBox {
 
     static init_NodeEditor(): void {
         this.prototype.default_view = NodeEditorView
+
+        this.define<NodeEditor.Props>(({Dict, Ref, Color}) => {
+            return {
+                nodes: [ Dict(Ref(Node)), {} ],
+                port_colors: [ Dict(Color), {} ]
+            }
+    })
     }
 }
