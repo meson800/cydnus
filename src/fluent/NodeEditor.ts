@@ -2,19 +2,15 @@ import {HTMLBox, HTMLBoxView} from "@bokehjs/models/layouts/html_box"
 import {canvas} from "@bokehjs/core/dom"
 import * as bprop from "@bokehjs/core/properties"
 import * as btypes from "@bokehjs/core/types"
+import * as r from "./Renderer"
 
-import {Node} from "./node_models"
+import {Node} from "./NodeModels"
 
 // Following the example of
 // https://github.com/bokeh/bokeh/blob/35c49c5865d574601bcd4627484905a4071366a0/bokehjs/src/lib/core/bokeh_events.ts#L9
 
 // CONSTANT COLORS
-const COLOR_IntNode_INTERIOR: string = "rgba(90, 90, 90, 0.75)"
-const COLOR_IntNode_TITLE: string = "rgba(50, 50, 50, 0.75)"
-const COLOR_IntNode_SHADOW: string = "rgba(0,0,0,0)"
-const COLOR_IntNode_HIGHLIGHT: string = "white"
 const COLOR_STREAM: string = "white"
-const IntPort_COLORS: string[] = ["rgb(161, 161, 161)", "rgb(99, 199, 99)", "rgb(99, 99, 199)", "rgb(199, 199, 41)", "rgb(229, 139, 86)"]
 
 
 enum UIStatusMode {
@@ -23,6 +19,7 @@ enum UIStatusMode {
     IntNodeDragging,
     IntPortDrawing,
 }
+/*
 enum UIActionType {
     NA,
     Drag,
@@ -42,12 +39,7 @@ enum IntPortType {
     Metadata = 3,
     Style = 4,
 }
-
-interface IntPort {
-    is_output: boolean
-    type: IntPortType
-    name: string
-}
+*/
 
 interface Stream {
     out_IntNode: number,
@@ -67,45 +59,6 @@ class Vec2 {
     }
 }
 
-
-/**
- * Creates a new path representing a rectangle with all four corners rounded.
- * Stroking or filling the path is up to the function user!
- * 
- * @param ctx Canvas drawing context to use
- * @param x The x coordinate of the upper left corner of the rounded rectangle
- * @param y The y coordinate of the upper left corner of the rounded rectangle
- * @param width The width of the rectangle
- * @param height The height of the rectangle
- * @param radius The radius of the rounded corners
- */
-function pathRoundedRectangle(ctx: CanvasRenderingContext2D, x: number, y: number,
-    width: number, height: number, radius: number): void {
-        // Start in upper left corner
-        ctx.beginPath()
-        ctx.moveTo(x, y + radius)
-        ctx.quadraticCurveTo(x, y, x + radius, y)
-        ctx.lineTo(x + width - radius, y)
-        ctx.quadraticCurveTo(x + width, y, x + width, y + radius)
-        ctx.lineTo(x + width, y + height - radius)
-        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
-        ctx.lineTo(x + radius, y + height)
-        ctx.quadraticCurveTo(x, y + height, x, y + height - radius)
-        ctx.closePath()
-}
-
-function pathUpperRoundedRectangle(ctx: CanvasRenderingContext2D, x: number, y: number,
-    width: number, height: number, radius: number): void {
-        // Start in upper left corner
-        ctx.beginPath()
-        ctx.moveTo(x, y + radius)
-        ctx.quadraticCurveTo(x, y, x + radius, y)
-        ctx.lineTo(x + width - radius, y)
-        ctx.quadraticCurveTo(x + width, y, x + width, y + radius)
-        ctx.lineTo(x + width, y + height)
-        ctx.lineTo(x, y + height)
-        ctx.closePath()
-    }
 
 class UIStatus {
     mode: UIStatusMode
@@ -151,161 +104,12 @@ class UIStatus {
     }
 }
 
-class IntNode {
-    name: string
-    location: Vec2
-    radius: number = 8
-    font_size: number = 9
-    IntPorts: IntPort[] = []
-
-    constructor(name: string, loc: Vec2) {
-        this.name = name
-        this.location = loc
-    }
-
-    /**
-     * Draws this IntNode onto a canvas
-     * @param ctx A canvas rendering context to draw with
-     * @param isSelected If the IntNode is currently selected.
-     */
-    draw(ctx: CanvasRenderingContext2D, isSelected: boolean) {
-
-        const size: Vec2 = this.calculateSize(ctx)
-        ctx.save()
-
-        // Draw main IntNode rectangle
-        ctx.shadowBlur = 12
-        ctx.shadowColor = 'black'
-        ctx.shadowOffsetY = 7
-
-        this.pathOutline(ctx, size)
-        ctx.fillStyle = COLOR_IntNode_INTERIOR
-        ctx.fill()
-
-        if (isSelected) {
-            ctx.save()
-            ctx.strokeStyle = COLOR_IntNode_HIGHLIGHT
-            ctx.lineWidth = 1
-            ctx.stroke()
-            ctx.restore()
-        }
-
-        ctx.shadowBlur = 0
-        ctx.shadowColor = COLOR_IntNode_SHADOW
-        ctx.shadowOffsetY = 0
-
-        pathUpperRoundedRectangle(ctx, this.location.x, this.location.y, size.x, 14, this.radius)
-        ctx.fillStyle = COLOR_IntNode_TITLE
-        ctx.fill()
-
-        // Draw text
-        ctx.font = `${this.font_size}px sans-serif`
-        ctx.textAlign = "left"
-        ctx.textBaseline = "alphabetic"
-        ctx.fillStyle = "white"
-        ctx.fillText(this.name, this.location.x + this.radius, this.location.y + this.font_size + 1)
-
-        // Draw IntPorts
-        for (var i: number = 0; i < this.IntPorts.length; i++) {
-            const IntPort = this.IntPorts[i]
-            ctx.fillStyle = IntPort_COLORS[IntPort.type]
-            ctx.strokeStyle = "black"
-            ctx.lineWidth = 1
-
-            const IntPort_loc: Vec2 = this._getIntPortLocation(size, i)
-            this.pathIntPort(ctx, size, i)
-            ctx.fill()
-            ctx.stroke()
-
-            ctx.textAlign = IntPort.is_output ? "right" : "left"
-            ctx.textBaseline = "middle"
-            ctx.fillStyle = "white"
-            ctx.fillText(IntPort.name, IntPort_loc.x + (10 * (IntPort.is_output ? -1 : 1)), IntPort_loc.y)
-
-        }
-        ctx.restore()
-    }
-
-    pathOutline(ctx: CanvasRenderingContext2D, size: Vec2): void {
-        pathRoundedRectangle(ctx, this.location.x, this.location.y, size.x, size.y, this.radius)
-    }
-
-    _getIntPortLocation(size: Vec2, IntPort_idx: number): Vec2 {
-        const IntPort: IntPort = this.IntPorts[IntPort_idx]
-        return new Vec2(
-            this.location.x + (IntPort.is_output ? size.x : 0),
-            this.location.y + 25 + (IntPort_idx * 2 * this.font_size))
-    }
-
-    getIntPortLocation(ctx: CanvasRenderingContext2D, IntPort_idx: number): Vec2 {
-        return this._getIntPortLocation(this.calculateSize(ctx), IntPort_idx)
-    }
-
-    pathIntPort(ctx: CanvasRenderingContext2D, size: Vec2, IntPort_idx: number): void {
-        if (IntPort_idx >= 0 && IntPort_idx < this.IntPorts.length) {
-            const IntPort_loc = this._getIntPortLocation(size, IntPort_idx)
-
-            ctx.beginPath()
-            ctx.arc(IntPort_loc.x, IntPort_loc.y, 5, 0, 2 * Math.PI)
-            ctx.closePath()
-        }
-    }
-
-    handleMouse(ctx: CanvasRenderingContext2D, screen_coords: Vec2) : UIAction {
-        const size: Vec2 = this.calculateSize(ctx)
-
-        // Check each of the IntPorts:
-        for (let i: number = 0; i < this.IntPorts.length; i++) {
-            this.pathIntPort(ctx, size, i)
-            if (ctx.isPointInPath(screen_coords.x, screen_coords.y)) {
-                return {'type': UIActionType.IntPort, 'IntPort_id': i}
-            }
-        }
-
-        // Check for general outline purposes
-        this.pathOutline(ctx,size)
-        if (ctx.isPointInPath(screen_coords.x, screen_coords.y)) {
-            return {'type': UIActionType.Drag}
-        } else {
-        }
-        return {'type': UIActionType.NA}
-
-    }
-
-    /**
-     * Calculates the size of the IntNode, by the current context.
-     * @param ctx A canvas rendering context to draw with
-     */
-    calculateSize(ctx: CanvasRenderingContext2D): Vec2 {
-        ctx.save()
-        ctx.font = `${this.font_size}px sans-serif`
-        ctx.textAlign = "left"
-        ctx.textBaseline = "alphabetic"
-
-        const title_width = ctx.measureText(this.name).width
-
-        var max_width = title_width
-        this.IntPorts.forEach((IntPort: IntPort) => {
-            max_width = Math.max(max_width, ctx.measureText(IntPort.name).width)
-        })
-
-        ctx.restore()
-
-        // Allocate font_size * 2 for each IntPort
-
-        return new Vec2(max_width + (this.radius * 2) + 10, 25 + (this.font_size * this.IntPorts.length * 2))
-    }
-
-
-}
-
 export class NodeEditorView extends HTMLBoxView {
     model: NodeEditor
 
     canvas: HTMLCanvasElement
     draw_ctx: CanvasRenderingContext2D | null
     ui_status: UIStatus
-    nodes: Map<number, IntNode>
     streams: Set<Stream>
 
     last_IntNode_uid: number
@@ -333,11 +137,12 @@ export class NodeEditorView extends HTMLBoxView {
      */
     handleMouseDown(ev: MouseEvent) {
         if (this.draw_ctx) {
-            const mouseCanvasLoc: Vec2 = this.getMouseCanvasLoc(ev)
+            //const mouseCanvasLoc: Vec2 = this.getMouseCanvasLoc(ev)
 
             switch (ev.button) {
                 case 0: {
                     // Check each IntNode to see if we are selecting it
+                    /*
                     let lastAction: UIAction = {type: UIActionType.NA}
                     let lastId: number | undefined
                     for (const [id, IntNode] of this.nodes) {
@@ -402,6 +207,7 @@ export class NodeEditorView extends HTMLBoxView {
                     }
 
                     this.redraw()
+                    */
                     break
                 }
                 case 1: {
@@ -425,10 +231,11 @@ export class NodeEditorView extends HTMLBoxView {
      */
     handleMouseUp(ev: MouseEvent) {
         if (this.draw_ctx) {
-            const mouseCanvasLoc: Vec2 = this.getMouseCanvasLoc(ev)
+            //const mouseCanvasLoc: Vec2 = this.getMouseCanvasLoc(ev)
             switch (ev.button) {
                 case 0: {
 
+                    /*
                     if (this.ui_status.mode == UIStatusMode.IntPortDrawing) {
                         // Check to see if we can complete a stream
                         let lastAction: UIAction = {type: UIActionType.NA}
@@ -469,6 +276,7 @@ export class NodeEditorView extends HTMLBoxView {
                     }
                     this.ui_status.mode = UIStatusMode.None
                     this.redraw()
+                    */
                     break
                 }
                 case 1: {
@@ -504,6 +312,7 @@ export class NodeEditorView extends HTMLBoxView {
                 break
             }
             case UIStatusMode.IntNodeDragging: {
+                /*
                 for (const id of this.ui_status.selected_IntNodes) {
                     const IntNode = this.nodes.get(id)
                     if (IntNode) {
@@ -512,6 +321,7 @@ export class NodeEditorView extends HTMLBoxView {
                     }
                 }
                 this.redraw()
+                */
                 break
             }
             default: {
@@ -536,8 +346,9 @@ export class NodeEditorView extends HTMLBoxView {
      * Redraws the canvas element, using ui_status to set the drawing functions
      */
     redraw() {
-        console.log(this.model)
+        console.log(this.model.nodes)
         if (this.draw_ctx) {
+            const ctx: CanvasRenderingContext2D = this.draw_ctx
             const scale = this.ui_status.scale
             const origin = this.ui_status.origin
 
@@ -546,12 +357,14 @@ export class NodeEditorView extends HTMLBoxView {
             this.draw_ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
             this.draw_ctx.setTransform(scale, 0, 0, scale, origin.x, origin.y)
 
-            this.drawGrids()
+            r.renderGrid(this.draw_ctx, this.ui_status, 25,     1.0, '#131313')
+            r.renderGrid(this.draw_ctx, this.ui_status, 25 * 5, 2.0, '#131313')
 
             // Draw streams
             this.draw_ctx.save()
             this.draw_ctx.lineWidth = 3
             this.draw_ctx.strokeStyle = COLOR_STREAM
+                /*
             for (const stream of this.streams) {
                 const in_IntNode = this.nodes.get(stream.in_IntNode)
                 const out_IntNode = this.nodes.get(stream.out_IntNode)
@@ -569,13 +382,18 @@ export class NodeEditorView extends HTMLBoxView {
 
                 }
             }
+                */
             this.draw_ctx.restore()
             // Draw IntNodes
-            for (const [id, IntNode] of this.nodes) {
-                IntNode.draw(this.draw_ctx, this.ui_status.selected_IntNodes.has(id))
-            }
+            this.model.nodes
+            
+            
+            Object.entries(this.model.nodes).forEach((val: [string, Node]) => {
+                r.renderNode(ctx, this.model.port_colors, val[1], {x: 0, y: 0}, false)
+            })
 
             // Draw stream in progress
+            /*
             if (this.ui_status.mode == UIStatusMode.IntPortDrawing) {
                 const in_IntNode = this.nodes.get(this.ui_status.lastIntPortIntNode)
                 if (in_IntNode && this.ui_status.lastIntPort >= 0 && this.ui_status.lastIntPort < in_IntNode.IntPorts.length) {
@@ -590,69 +408,11 @@ export class NodeEditorView extends HTMLBoxView {
                     this.draw_ctx.restore()
                 }
             }
+            */
 
             // Draw status bar
-            this.draw_ctx.save()
-            this.draw_ctx.setTransform(1,0,0,1,0,0)
-            this.draw_ctx.font = "11px sans-serif"
-            this.draw_ctx.textAlign = "left"
-            this.draw_ctx.textBaseline = "bottom"
-            this.draw_ctx.fillStyle = "white"
-            let statusbar_text: string = "fluentjs-v0.0.1"
-            this.draw_ctx.fillText(statusbar_text, 5, this.canvas.height)
-            this.draw_ctx.restore()
-
+            r.renderStatusbar(this.draw_ctx, "fluentjs-v0.0.1")
         }
-
-    }
-    /**
-     * Draws a grid on the canvas, with the desired spacing and style
-     * 
-     * @param spacing The number of pixels between grid lines.
-     * @param width The width of the grid lines in pixels.
-     * @param color The color of the grid lines
-     */
-    drawGrid(spacing: number, width: number, color: string): void {
-        const roundDown = (x: number): number => {
-            return Math.min(x, Math.floor(x / spacing) * spacing)
-        }
-        const roundUp = (x: number): number => {
-            return Math.max(x, Math.ceil(x / spacing) * spacing)
-        }
-        
-        const upperLeft = this.ui_status.canvasToDrawCoord({x: 0, y: 0})
-        const bottomRight = this.ui_status.canvasToDrawCoord({
-            x: this.canvas.width,
-            y: this.canvas.height
-        })
-
-        upperLeft.x = roundDown(upperLeft.x)
-        upperLeft.y = roundDown(upperLeft.y)
-        bottomRight.x = roundUp(bottomRight.x)
-        bottomRight.y = roundUp(bottomRight.y)
-
-        if (this.draw_ctx) {
-            this.draw_ctx.beginPath()
-            for (var i: number = upperLeft.x; i < bottomRight.x; i += spacing) {
-                this.draw_ctx.moveTo(i, upperLeft.y)
-                this.draw_ctx.lineTo(i, bottomRight.y)
-            }
-
-            for (var j: number = upperLeft.y; j < bottomRight.y; j += spacing) {
-                this.draw_ctx.moveTo(upperLeft.x, j)
-                this.draw_ctx.lineTo(bottomRight.x, j)
-            }
-            // Stroke thin lines
-            this.draw_ctx.lineWidth = width
-            this.draw_ctx.strokeStyle = color
-            this.draw_ctx.stroke()
-        }
-
-
-    }
-    drawGrids(): void {
-        this.drawGrid(25, 1.0, '#131313')
-        this.drawGrid(25 * 5, 2.0, '#131313')
     }
 
     render(): void {
@@ -679,18 +439,8 @@ export class NodeEditorView extends HTMLBoxView {
         this.draw_ctx = this.canvas.getContext("2d")
         this.el.appendChild(this.canvas)
 
-        this.nodes = new Map<number, IntNode>()
         this.streams = new Set<Stream>()
         this.last_IntNode_uid = 0
-        let node = new IntNode('Test IntNode', new Vec2(1.2, 2.4))
-        node.IntPorts.push({"is_output": true, "name": "Testing a really really really long IntPort name", "type": IntPortType.Events})
-        node.IntPorts.push({"is_output": false, "name": "Events IntPort", "type": IntPortType.Events})
-        node.IntPorts.push({"is_output": false, "name": "Scalar IntPort", "type": IntPortType.Scalar})
-        node.IntPorts.push({"is_output": false, "name": "Metadata IntPort", "type": IntPortType.Metadata})
-        node.IntPorts.push({"is_output": false, "name": "String IntPort", "type": IntPortType.String})
-        node.IntPorts.push({"is_output": false, "name": "Style IntPort", "type": IntPortType.Style})
-        this.nodes.set(0, node)
-
         this.redraw()
     }
 }

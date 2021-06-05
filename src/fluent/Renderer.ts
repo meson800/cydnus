@@ -1,4 +1,4 @@
-import {Node, Port} from "./node_models"
+import {Node, Port} from "./NodeModels"
 import {Color} from "@bokehjs/core/types"
 import {color2css} from "@bokehjs/core/util/color"
 /**
