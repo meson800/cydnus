@@ -29,12 +29,18 @@ export class Port extends Model {
 }
 
 
+export type Location = {
+    x: number,
+    y: number
+}
+
 export namespace Node {
     export type Attrs = bprop.AttrsOf<Props>
     export type Props = {
         node_name: bprop.Property<string>,
         uid: bprop.Property<string>,
-        ports: bprop.Property<Port[]>
+        ports: bprop.Property<Port[]>,
+        location: bprop.Property<Location>
     }
 }
 
@@ -50,5 +56,16 @@ export class Node extends Model {
             uid: [ String, "" ],
             ports: [ Array(Ref(Port)), [] ]
         }))
+
+        this.internal<Node.Props>(({Number, Struct}) => {
+            const Location = Struct({
+                x: Number,
+                y: Number
+            })
+
+            return {
+                location: [ Location, {x: 0, y: 0} ]
+            }
+        })
     }
 }
