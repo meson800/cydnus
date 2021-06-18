@@ -189,13 +189,19 @@ export function renderStatusbar(ctx: CanvasRenderingContext2D, text: string) {
     ctx.restore()
 }
 
-export function renderNode(
-    ctx: CanvasRenderingContext2D,
-    colorMap: ColorMap,
-    node: Node,
-    loc: Vec2,
-    selected: boolean) : DrawElement {
-    // Calculate overall size and locations of all ports.
+export function inPort(_ctx: CanvasRenderingContext2D, _node: Node, _portIdx: number): boolean {
+    return false
+}
+export function inNode(ctx: CanvasRenderingContext2D, node: Node, c: Vec2): boolean {
+    ctx.save()
+    const nodeSize: Vec2 = calculateNodeSize(ctx, node)
+    pathRoundedRectangle(ctx, node.location.x, node.location.y, nodeSize.x, nodeSize.y, NODE_RADIUS)
+    const result = ctx.isPointInPath(c.x, c.y)
+    ctx.restore()
+    return result
+}
+
+function calculateNodeSize(ctx: CanvasRenderingContext2D, node: Node): Vec2 {
     ctx.save()
     ctx.font = `${NODE_FONT_SIZE}px sans-serif`
     ctx.textAlign = "left"
@@ -208,10 +214,21 @@ export function renderNode(
         maxWidth = Math.max(maxWidth, ctx.measureText(port.port_name).width)
     })
 
-    const nodeSize: Vec2 = {
+    return {
         x: (maxWidth + NODE_RADIUS * 2) + 10,
         y: 25 + (NODE_FONT_SIZE * node.ports.length * 2)
     }
+}
+
+export function renderNode(
+    ctx: CanvasRenderingContext2D,
+    colorMap: ColorMap,
+    node: Node,
+    loc: Vec2,
+    selected: boolean) : DrawElement {
+    // Calculate overall size and locations of all ports.
+    ctx.save()
+    const nodeSize: Vec2 = calculateNodeSize(ctx, node)
 
     // Draw main IntNode rectangle
     ctx.shadowBlur = 12

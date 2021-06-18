@@ -8,6 +8,7 @@ export namespace Port {
         port_name: bprop.Property<string>,
         is_input: bprop.Property<boolean>,
         datatype: bprop.Property<string>,
+        control: bprop.Property<"none" | "boolean" | "integer" | "float" | "string" | "select">,
         value: bprop.Property<boolean | number | string>
     }
 }
@@ -19,10 +20,11 @@ export class Port extends Model {
     static __module__ = "fluent.NodeEditor"
 
     static init_Port(): void {
-        this.define<Port.Props>(({Boolean, String, Int, Or}) => ({
+        this.define<Port.Props>(({Boolean, String, Int, Enum, Or}) => ({
             port_name: [ String, "" ],
             is_input: [ Boolean, false ],
             datatype: [ String, "" ],
+            control: [ Enum("none", "boolean", "integer", "float", "string", "select"), "none"],
             value: [ Or(Boolean, Int, String), false ]
         }))
     }

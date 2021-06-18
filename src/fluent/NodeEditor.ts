@@ -14,10 +14,8 @@ const COLOR_STREAM: string = "white"
 
 
 enum UIStatusMode {
-    None,
-    CanvasDragging,
-    IntNodeDragging,
-    IntPortDrawing,
+    Default,
+    NodeDragging,
 }
 /*
 enum UIActionType {
@@ -62,21 +60,19 @@ class Vec2 {
 
 class UIStatus {
     mode: UIStatusMode
+    isCanvasDragging: boolean
     origin: Vec2
     scale: number
-    selected_IntNodes: Set<number>
+    selectedNodes: Set<string>
     lastMouseDrawLoc: Vec2
-    lastIntPortIntNode: number
-    lastIntPort: number
 
     constructor() {
-        this.mode = UIStatusMode.None
+        this.mode = UIStatusMode.Default
+        this.isCanvasDragging = false
         this.origin = {x: 0, y: 0}
         this.scale = 1.0
-        this.selected_IntNodes = new Set<number>()
+        this.selectedNodes = new Set<string>()
         this.lastMouseDrawLoc = {x: 0, y: 0}
-        this.lastIntPortIntNode = 0
-        this.lastIntPort = 0
     }
 
     /**
@@ -136,43 +132,45 @@ export class NodeEditorView extends HTMLBoxView {
      * @param ev The mouse event associated with the mouse down event
      */
     handleMouseDown(ev: MouseEvent) {
-        if (this.draw_ctx) {
-            //const mouseCanvasLoc: Vec2 = this.getMouseCanvasLoc(ev)
+        const ctx: CanvasRenderingContext2D | null = this.draw_ctx
+        if (ctx) {
+            const mouseCanvasLoc: Vec2 = this.getMouseCanvasLoc(ev)
 
             switch (ev.button) {
                 case 0: {
-                    // Check each IntNode to see if we are selecting it
+                    // Check each node to see if we are selecting it
+                    let lastNode: string | undefined
+                    Object.entries(this.model.nodes).forEach((val: [string, Node]) => {
+                        if (r.inNode(ctx, val[1], mouseCanvasLoc)) {
+                            console.log("Node ", val[0], " selected!")
+                            lastNode = val[0]
+                        }
+                    })
+
+                    // Deselect all nodes if we didn't click a node
+                    if (!lastNode) {
+                        this.ui_status.selectedNodes.clear()
+                    }
+
+                    if (this.ui_status.mode == UIStatusMode.Default && lastNode) {
+                        // If we aren't holding shift and we clicked a previously unselected
+                        // item, clear the node list
+                        if (!ev.shiftKey && !this.ui_status.selectedNodes.has(lastNode)) {
+                            this.ui_status.selectedNodes.clear()
+                        }
+
+                        // Now add the node to the selection list
+                        if (!this.ui_status.selectedNodes.has(lastNode)) {
+                            this.ui_status.selectedNodes.add(lastNode)
+                        }
+
+                        // Enter dragging mode if we have nodes selected
+                        if (this.ui_status.selectedNodes.size > 0) {
+                            this.ui_status.mode = UIStatusMode.NodeDragging
+                        }
+                    }
+                    this.redraw()
                     /*
-                    let lastAction: UIAction = {type: UIActionType.NA}
-                    let lastId: number | undefined
-                    for (const [id, IntNode] of this.nodes) {
-                        const action: UIAction = IntNode.handleMouse(this.draw_ctx, mouseCanvasLoc)
-                        if (action.type != UIActionType.NA) {
-                            lastAction = action
-                            lastId = id
-                        }
-                    }
-                    // Deselect IntNodes if we didn't click a IntNode
-                    if (lastAction.type == UIActionType.NA) {
-                        this.ui_status.selected_IntNodes.clear()
-                    }
-
-                    if (lastAction.type == UIActionType.Drag && lastId != undefined) {
-                        // Check status. First, if we are NOT holding shift and we clicked
-                        // a previously unselected item, we should clear the selected IntNode list
-                        if (!ev.shiftKey && !this.ui_status.selected_IntNodes.has(lastId)) {
-                            this.ui_status.selected_IntNodes.clear()
-                        }
-                        
-                        // Add this IntNode to the selected list if it isn't already:
-                        if (!this.ui_status.selected_IntNodes.has(lastId)) {
-                            this.ui_status.selected_IntNodes.add(lastId)
-                        }
-
-                        // If we have > 0 selected IntNodes, go into drag mode
-                        if (this.ui_status.selected_IntNodes.size > 0) {
-                            this.ui_status.mode = UIStatusMode.IntNodeDragging
-                        }
                     } else if (lastAction.type == UIActionType.IntPort && lastId != undefined &&
                         lastAction.IntPort_id != undefined) {
                         // Start drawing :)
@@ -205,15 +203,11 @@ export class NodeEditorView extends HTMLBoxView {
                             }
                         }
                     }
-
-                    this.redraw()
                     */
                     break
                 }
                 case 1: {
-                    if (this.ui_status.mode == UIStatusMode.None) {
-                        this.ui_status.mode = UIStatusMode.CanvasDragging
-                    }
+                    this.ui_status.isCanvasDragging = true
                     ev.preventDefault()
                     break
                 }
@@ -234,6 +228,8 @@ export class NodeEditorView extends HTMLBoxView {
             //const mouseCanvasLoc: Vec2 = this.getMouseCanvasLoc(ev)
             switch (ev.button) {
                 case 0: {
+                    this.ui_status.mode = UIStatusMode.Default
+                    this.redraw()
 
                     /*
                     if (this.ui_status.mode == UIStatusMode.IntPortDrawing) {
@@ -280,9 +276,7 @@ export class NodeEditorView extends HTMLBoxView {
                     break
                 }
                 case 1: {
-                    if (this.ui_status.mode == UIStatusMode.CanvasDragging) {
-                        this.ui_status.mode = UIStatusMode.None
-                    }
+                    this.ui_status.isCanvasDragging = false
                     ev.preventDefault()
                     break
                 }
@@ -299,29 +293,28 @@ export class NodeEditorView extends HTMLBoxView {
      * @param ev The mouse event associated with the mouse move event
      */
     handleMouseMove(ev: MouseEvent) {
+        // Skip all actions if we are canvas dragging
+        if (this.ui_status.isCanvasDragging) {
+            this.ui_status.origin.x += ev.movementX
+            this.ui_status.origin.y += ev.movementY
+            this.redraw()
+            return
+        }
         switch (this.ui_status.mode) {
-            case UIStatusMode.CanvasDragging: {
-                this.ui_status.origin.x += ev.movementX
-                this.ui_status.origin.y += ev.movementY
-                this.redraw()
-                break
-            }
-            case UIStatusMode.IntPortDrawing: {
+            /*
+            case UIStatusMode.PortDrawing: {
                 this.ui_status.lastMouseDrawLoc = this.getMouseDrawLoc(ev)
                 this.redraw()
                 break
             }
-            case UIStatusMode.IntNodeDragging: {
-                /*
-                for (const id of this.ui_status.selected_IntNodes) {
-                    const IntNode = this.nodes.get(id)
-                    if (IntNode) {
-                        IntNode.location.x += ev.movementX / this.ui_status.scale
-                        IntNode.location.y += ev.movementY / this.ui_status.scale
-                    }
+            */
+            case UIStatusMode.NodeDragging: {
+                for (const id of this.ui_status.selectedNodes) {
+                    const node = this.model.nodes[id]
+                    node.location.x += ev.movementX / this.ui_status.scale
+                    node.location.y += ev.movementY / this.ui_status.scale
                 }
                 this.redraw()
-                */
                 break
             }
             default: {
@@ -346,7 +339,6 @@ export class NodeEditorView extends HTMLBoxView {
      * Redraws the canvas element, using ui_status to set the drawing functions
      */
     redraw() {
-        console.log(this.model.nodes)
         if (this.draw_ctx) {
             const ctx: CanvasRenderingContext2D = this.draw_ctx
             const scale = this.ui_status.scale
@@ -389,7 +381,9 @@ export class NodeEditorView extends HTMLBoxView {
             
             
             Object.entries(this.model.nodes).forEach((val: [string, Node]) => {
-                r.renderNode(ctx, this.model.port_colors, val[1], {x: 0, y: 0}, false)
+                r.renderNode(ctx, this.model.port_colors, val[1],
+                             val[1].location,
+                             this.ui_status.selectedNodes.has(val[0]))
             })
 
             // Draw stream in progress

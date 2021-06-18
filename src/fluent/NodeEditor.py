@@ -1,4 +1,4 @@
-from bokeh.core.properties import Instance, List, Struct, String, Dict, Bool, Int, Color, Interval, Either
+from bokeh.core.properties import Instance, List, Enum, String, Dict, Bool, Int, Color, Interval, Either
 from bokeh.events import Event
 from bokeh.models import HTMLBox, Model
 
@@ -16,7 +16,8 @@ class NodeEvent(Event):
 class Port(Model):
     port_name     = String(help='The *unique* name of the port')
     is_input      = Bool()
-    datatype          = String(help="The type of port")
+    datatype      = String(help="The type of port")
+    control       = Enum("none", "boolean", "integer", "float", "string", "select")
     value         = Either(Bool, Int, String)
 
 class Node(Model):
