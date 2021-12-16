@@ -14,6 +14,13 @@ export interface Vec2 {
     x: number,
     y: number
 }
+
+export interface BoundingBox {
+    origin: Vec2
+    width: number
+    height: number
+}
+
 export interface RenderRegion {
     origin: Vec2
     scale: number
@@ -124,6 +131,32 @@ const COLOR_IntNode_HIGHLIGHT: string = "white"
 //const COLOR_STREAM: string = "white"
 const NODE_FONT_SIZE: number = 9
 const NODE_RADIUS: number = 8
+
+/***********************
+ * 
+ * Main 
+ */
+
+class RenderedElement {
+    location: Vec2
+    children: RenderedElement[]
+    preDraw(_: CanvasRenderingContext2D): void | BoundingBox {}
+    draw(ctx: CanvasRenderingContext2D): void | BoundingBox {
+        // Shift the coordinate system so that this element is at the origin
+        ctx.translate(this.location.x, this.location.y)
+        this.preDraw(ctx)
+        for (var child of this.children) {
+            child.draw(ctx)
+        }
+        this.postDraw(ctx)
+        ctx.translate(-this.location.x, -this.location.y)
+    }
+    postDraw(_: CanvasRenderingContext2D): void | BoundingBox {}
+    handleMouseDown(ev: MouseEvent): boolean {return false}
+    handleMouseUp(ev: MouseEvent): boolean {return false}
+    handleMouseMove(ev: MouseEvent): boolean {return false}
+    handleWheel(ev: WheelEvent): boolean {return false}
+}
 
 /*********************************************************************
  * 
