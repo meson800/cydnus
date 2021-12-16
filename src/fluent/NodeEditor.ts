@@ -153,6 +153,7 @@ export class NodeEditorView extends HTMLBoxView {
         if (ctx) {
             const mouseCanvasLoc: Vec2 = this.getMouseCanvasLoc(ev)
 
+            /*
             switch (ev.button) {
                 case 0: {
                     // Check each node to see if we are selecting it
@@ -245,7 +246,6 @@ export class NodeEditorView extends HTMLBoxView {
                             }
                         }
                     }
-                    */
                     break
                 }
                 case 1: {
@@ -257,6 +257,7 @@ export class NodeEditorView extends HTMLBoxView {
                     break
                 }
             }
+                    */
         }
     }
 
@@ -350,6 +351,7 @@ export class NodeEditorView extends HTMLBoxView {
                 break
             }
             */
+           /*
             case UIStatusMode.NodeDragging: {
                 for (const id of this.ui_status.selectedNodes) {
                     const node = this.model.nodes[id]
@@ -359,6 +361,7 @@ export class NodeEditorView extends HTMLBoxView {
                 this.redraw()
                 break
             }
+            */
             default: {
                 break
             }
@@ -422,11 +425,13 @@ export class NodeEditorView extends HTMLBoxView {
             this.model.nodes
             
             
+            /*
             Object.entries(this.model.nodes).forEach((val: [string, Node]) => {
                 r.renderNode(ctx, this.model.port_colors, val[1],
                              val[1].location,
                              this.ui_status.selectedNodes.has(val[0]))
             })
+            */
 
             // Draw stream in progress
             /*

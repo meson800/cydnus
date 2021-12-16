@@ -140,8 +140,19 @@ const NODE_RADIUS: number = 8
 class RenderedElement {
     location: Vec2
     children: RenderedElement[]
-    preDraw(_: CanvasRenderingContext2D): void | BoundingBox {}
-    draw(ctx: CanvasRenderingContext2D): void | BoundingBox {
+    // Overridable functions that define the draw and mouse handling events.
+    preDraw(_: CanvasRenderingContext2D): void {}
+    postDraw(_: CanvasRenderingContext2D): void {}
+    handleMouseDown(_ev: MouseEvent, _offset:Vec2): boolean {return false}
+    handleMouseUp(_ev: MouseEvent, _offset:Vec2): boolean {return false}
+    handleMouseMove(_ev: MouseEvent, _offset:Vec2): boolean {return false}
+    handleWheel(_ev: WheelEvent, _offset:Vec2): boolean {return false}
+
+    // Helper recursive functions. Do not override!
+    constructor(location: Vec2) {
+        this.location = location
+    }
+    draw(ctx: CanvasRenderingContext2D): void {
         // Shift the coordinate system so that this element is at the origin
         ctx.translate(this.location.x, this.location.y)
         this.preDraw(ctx)
@@ -151,11 +162,52 @@ class RenderedElement {
         this.postDraw(ctx)
         ctx.translate(-this.location.x, -this.location.y)
     }
-    postDraw(_: CanvasRenderingContext2D): void | BoundingBox {}
-    handleMouseDown(ev: MouseEvent): boolean {return false}
-    handleMouseUp(ev: MouseEvent): boolean {return false}
-    handleMouseMove(ev: MouseEvent): boolean {return false}
-    handleWheel(ev: WheelEvent): boolean {return false}
+    handleMouseDownHelper(ev: MouseEvent, offset:Vec2): boolean {
+        for (var child of this.children) {
+            if (child.handleMouseDownHelper(ev, {x: offset.x + child.location.x, y: offset.y + child.location.y})) {
+                return true
+            }
+        }
+        return this.handleMouseDown(ev, offset)
+    }
+    handleMouseUpHelper(ev: MouseEvent, offset:Vec2): boolean {
+        for (var child of this.children) {
+            if (child.handleMouseUpHelper(ev, {x: offset.x + child.location.x, y: offset.y + child.location.y})) {
+                return true
+            }
+        }
+        return this.handleMouseUp(ev, offset)
+
+    }
+    handleMouseMoveHelper(ev: MouseEvent, offset:Vec2): boolean {
+        for (var child of this.children) {
+            if (child.handleMouseMoveHelper(ev, {x: offset.x + child.location.x, y: offset.y + child.location.y})) {
+                return true
+            }
+        }
+        return this.handleMouseMove(ev, offset)
+
+    }
+    handleWheelHelper(ev: WheelEvent, offset:Vec2): boolean {
+        for (var child of this.children) {
+            if (child.handleWheelHelper(ev, {x: offset.x + child.location.x, y: offset.y + child.location.y})) {
+                return true
+            }
+        }
+        return this.handleWheel(ev, offset)
+    }
+}
+
+class NodeElement extends RenderedElement {
+    constructor(location: Vec2) {
+        super(location)
+    }
+    preDraw(_: CanvasRenderingContext2D): void {}
+    postDraw(_: CanvasRenderingContext2D): void {}
+    handleMouseDown(_ev: MouseEvent, _offset:Vec2): boolean {return false}
+    handleMouseUp(_ev: MouseEvent, _offset:Vec2): boolean {return false}
+    handleMouseMove(_ev: MouseEvent, _offset:Vec2): boolean {return false}
+    handleWheel(_ev: WheelEvent, _offset:Vec2): boolean {return false}
 }
 
 /*********************************************************************
