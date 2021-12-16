@@ -14,9 +14,11 @@ class NodeEvent(Event):
 
 
 class Port(Model):
-    port_name     = String(help='The *unique* name of the port')
+    port_name     = String("", help='The *unique* name of the port')
     is_input      = Bool()
-    datatype      = String(help="The type of port")
+    incoming_node = String("")
+    incoming_port = String("")
+    datatype      = String("", help="The type of port")
     control       = Enum("none", "boolean", "integer", "float", "string", "select")
     value         = Either(Bool, Int, String)
 

@@ -4,7 +4,7 @@ import * as bprop from "@bokehjs/core/properties"
 import * as btypes from "@bokehjs/core/types"
 import * as r from "./Renderer"
 
-import {Node} from "./NodeModels"
+import {Node, Port} from "./NodeModels"
 
 // Following the example of
 // https://github.com/bokeh/bokeh/blob/35c49c5865d574601bcd4627484905a4071366a0/bokehjs/src/lib/core/bokeh_events.ts#L9
@@ -16,14 +16,16 @@ const COLOR_STREAM: string = "white"
 enum UIStatusMode {
     Default,
     NodeDragging,
+    PortDragging,
 }
-/*
+
 enum UIActionType {
-    NA,
+    None,
     Drag,
-    IntPort,
+    Port,
     Internal
 }
+/*
 
 interface UIAction {
     type: UIActionType
@@ -57,22 +59,36 @@ class Vec2 {
     }
 }
 
+interface PortSelection {
+    node_name: string,
+    port_id: number
+}
+interface UserStatus {
+    mouseLoc: Vec2
+    action: UIActionType,
+    selection: Set<string>,
+    portSelection: PortSelection | undefined
+}
 
 class UIStatus {
     mode: UIStatusMode
     isCanvasDragging: boolean
+    userStatus: UserStatus
     origin: Vec2
     scale: number
-    selectedNodes: Set<string>
-    lastMouseDrawLoc: Vec2
+
 
     constructor() {
         this.mode = UIStatusMode.Default
         this.isCanvasDragging = false
+        this.userStatus = {
+            mouseLoc: {x: 0, y: 0},
+            action: UIActionType.None,
+            selection: new Set<string>(),
+            portSelection: undefined
+        }
         this.origin = {x: 0, y: 0}
         this.scale = 1.0
-        this.selectedNodes = new Set<string>()
-        this.lastMouseDrawLoc = {x: 0, y: 0}
     }
 
     /**
@@ -139,37 +155,62 @@ export class NodeEditorView extends HTMLBoxView {
             switch (ev.button) {
                 case 0: {
                     // Check each node to see if we are selecting it
-                    let lastNode: string | undefined
-                    Object.entries(this.model.nodes).forEach((val: [string, Node]) => {
-                        if (r.inNode(ctx, val[1], mouseCanvasLoc)) {
-                            console.log("Node ", val[0], " selected!")
-                            lastNode = val[0]
-                        }
-                    })
-
-                    // Deselect all nodes if we didn't click a node
-                    if (!lastNode) {
-                        this.ui_status.selectedNodes.clear()
+                    let action: UIAction = {
+                        action: UIActionType.None,
+                        port_id: undefined,
+                        node_name: undefined
                     }
+                    // Rewrite such that each node we check returns a status flag/port ID.
+                    for (const [name, node] of Object.entries(this.model.nodes)) {
+                        reduce
+                        node.ports.reduce<PortSelection | undefined>((acc, val, i) => {
 
-                    if (this.ui_status.mode == UIStatusMode.Default && lastNode) {
-                        // If we aren't holding shift and we clicked a previously unselected
-                        // item, clear the node list
-                        if (!ev.shiftKey && !this.ui_status.selectedNodes.has(lastNode)) {
+
+                        }, undefined)
+                        for (var i = 0; i < node.ports.length; i++) {
+                            if (r.inPort(ctx, node, i, mouseCanvasLoc)) {
+                                action.action = UIActionType.Port
+                                action.port_id = i
+                            }
+
+                        }
+
+                        if (action.action == UIActionType.Port) {
+                            action.node_name = name
+                            return
+                        }
+
+                        if (r.inNode(ctx, node, mouseCanvasLoc)) {
+                            lastNodeName = name
+                            uiAction = UIActionType.Drag
+                            return
+                        }
+                    }
+                    if (uiAction == UIActionType.Drag) {
+                        // Deselect all nodes if we didn't click a node
+                        if (!lastNodeName) {
                             this.ui_status.selectedNodes.clear()
                         }
 
-                        // Now add the node to the selection list
-                        if (!this.ui_status.selectedNodes.has(lastNode)) {
-                            this.ui_status.selectedNodes.add(lastNode)
-                        }
+                        if (this.ui_status.mode == UIStatusMode.Default && lastNodeName) {
+                            // If we aren't holding shift and we clicked a previously unselected
+                            // item, clear the node list
+                            if (!ev.shiftKey && !this.ui_status.selectedNodes.has(lastNodeName)) {
+                                this.ui_status.selectedNodes.clear()
+                            }
 
-                        // Enter dragging mode if we have nodes selected
-                        if (this.ui_status.selectedNodes.size > 0) {
-                            this.ui_status.mode = UIStatusMode.NodeDragging
+                            // Now add the node to the selection list
+                            if (!this.ui_status.selectedNodes.has(lastNodeName)) {
+                                this.ui_status.selectedNodes.add(lastNodeName)
+                            }
+
+                            // Enter dragging mode if we have nodes selected
+                            if (this.ui_status.selectedNodes.size > 0) {
+                                this.ui_status.mode = UIStatusMode.NodeDragging
+                            }
                         }
+                        this.redraw()
                     }
-                    this.redraw()
                     /*
                     } else if (lastAction.type == UIActionType.IntPort && lastId != undefined &&
                         lastAction.IntPort_id != undefined) {

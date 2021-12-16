@@ -30,6 +30,13 @@ type ColorMap = {
 }
 
 /**
+ * Interface representing a drawn port
+ */
+interface PortUI {
+    
+}
+
+/**
  * Draw commands return DrawElement's
  */
 interface DrawElement {
@@ -189,8 +196,20 @@ export function renderStatusbar(ctx: CanvasRenderingContext2D, text: string) {
     ctx.restore()
 }
 
-export function inPort(_ctx: CanvasRenderingContext2D, _node: Node, _portIdx: number): boolean {
-    return false
+export function inPort(ctx: CanvasRenderingContext2D, node: Node, portIdx: number, c: Vec2): boolean {
+    ctx.save()
+    const nodeSize: Vec2 = calculateNodeSize(ctx, node)
+    const port: Port = node.ports[portIdx]
+    const portLoc: Vec2 = {
+        x: node.location.x + (port.is_input ? 0 : nodeSize.x),
+        y: node.location.y + 25 + (portIdx * 2 * NODE_FONT_SIZE)
+    }
+    ctx.beginPath()
+    ctx.arc(portLoc.x, portLoc.y, 5, 0, 2 * Math.PI)
+    ctx.closePath()
+    const result = ctx.isPointInPath(c.x, c.y)
+    ctx.restore()
+    return result
 }
 export function inNode(ctx: CanvasRenderingContext2D, node: Node, c: Vec2): boolean {
     ctx.save()

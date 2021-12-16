@@ -7,6 +7,8 @@ export namespace Port {
     export type Props = {
         port_name: bprop.Property<string>,
         is_input: bprop.Property<boolean>,
+        incoming_node: bprop.Property<string>,
+        incoming_port: bprop.Property<string>,
         datatype: bprop.Property<string>,
         control: bprop.Property<"none" | "boolean" | "integer" | "float" | "string" | "select">,
         value: bprop.Property<boolean | number | string>
@@ -23,6 +25,8 @@ export class Port extends Model {
         this.define<Port.Props>(({Boolean, String, Int, Enum, Or}) => ({
             port_name: [ String, "" ],
             is_input: [ Boolean, false ],
+            incoming_node: [ String, "" ],
+            incoming_port: [ String, "" ],
             datatype: [ String, "" ],
             control: [ Enum("none", "boolean", "integer", "float", "string", "select"), "none"],
             value: [ Or(Boolean, Int, String), false ]
