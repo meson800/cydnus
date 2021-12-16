@@ -199,7 +199,7 @@ class RenderedElement {
 }
 
 class NodeElement extends RenderedElement {
-    constructor(location: Vec2) {
+    constructor(location: Vec2, updateLocationCallback: (x: number, y: number)=> void) {
         super(location)
     }
     preDraw(_: CanvasRenderingContext2D): void {}
@@ -208,6 +208,22 @@ class NodeElement extends RenderedElement {
     handleMouseUp(_ev: MouseEvent, _offset:Vec2): boolean {return false}
     handleMouseMove(_ev: MouseEvent, _offset:Vec2): boolean {return false}
     handleWheel(_ev: WheelEvent, _offset:Vec2): boolean {return false}
+}
+
+class PortElement extends RenderedElement {
+    constructor(location: Vec2, port_name: string, is_input: boolean) {
+        super(location)
+    }
+    preDraw(_: CanvasRenderingContext2D): void {}
+    postDraw(_: CanvasRenderingContext2D): void {}
+    handleMouseDown(_ev: MouseEvent, _offset:Vec2): boolean {return false}
+    handleMouseUp(_ev: MouseEvent, _offset:Vec2): boolean {return false}
+    handleMouseMove(_ev: MouseEvent, _offset:Vec2): boolean {return false}
+    handleWheel(_ev: WheelEvent, _offset:Vec2): boolean {return false}
+}
+
+class IntPortElement extends PortElement {
+    
 }
 
 /*********************************************************************
