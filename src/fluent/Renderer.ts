@@ -1,6 +1,7 @@
 import {Node, Port} from "./NodeModels"
 import {Color} from "@bokehjs/core/types"
 import {color2css} from "@bokehjs/core/util/color"
+import { Canvas } from "@bokeh/bokehjs"
 /**
  * A series of *state-independent* rendering definitions.
  * These render functions are expected to be given all of the information
@@ -89,39 +90,40 @@ function drawToCanvasCoord(region: RenderRegion, pos: Vec2) : Vec2 {
  * Creates a new path representing a rectangle with all four corners rounded.
  * Stroking or filling the path is up to the function user!
  * 
- * @param ctx Canvas drawing context to use
  * @param x The x coordinate of the upper left corner of the rounded rectangle
  * @param y The y coordinate of the upper left corner of the rounded rectangle
  * @param width The width of the rectangle
  * @param height The height of the rectangle
  * @param radius The radius of the rounded corners
  */
-function pathRoundedRectangle(ctx: CanvasRenderingContext2D, x: number, y: number,
-    width: number, height: number, radius: number): void {
+function pathRoundedRectangle(x: number, y: number,
+    width: number, height: number, radius: number): Path2D {
         // Start in upper left corner
-        ctx.beginPath()
-        ctx.moveTo(x, y + radius)
-        ctx.quadraticCurveTo(x, y, x + radius, y)
-        ctx.lineTo(x + width - radius, y)
-        ctx.quadraticCurveTo(x + width, y, x + width, y + radius)
-        ctx.lineTo(x + width, y + height - radius)
-        ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
-        ctx.lineTo(x + radius, y + height)
-        ctx.quadraticCurveTo(x, y + height, x, y + height - radius)
-        ctx.closePath()
+        const result: Path2D = new Path2D()
+        result.moveTo(x, y + radius)
+        result.quadraticCurveTo(x, y, x + radius, y)
+        result.lineTo(x + width - radius, y)
+        result.quadraticCurveTo(x + width, y, x + width, y + radius)
+        result.lineTo(x + width, y + height - radius)
+        result.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+        result.lineTo(x + radius, y + height)
+        result.quadraticCurveTo(x, y + height, x, y + height - radius)
+        result.closePath()
+        return result
 }
 
-function pathUpperRoundedRectangle(ctx: CanvasRenderingContext2D, x: number, y: number,
-    width: number, height: number, radius: number): void {
+function pathUpperRoundedRectangle(x: number, y: number,
+    width: number, height: number, radius: number): Path2D {
         // Start in upper left corner
-        ctx.beginPath()
-        ctx.moveTo(x, y + radius)
-        ctx.quadraticCurveTo(x, y, x + radius, y)
-        ctx.lineTo(x + width - radius, y)
-        ctx.quadraticCurveTo(x + width, y, x + width, y + radius)
-        ctx.lineTo(x + width, y + height)
-        ctx.lineTo(x, y + height)
-        ctx.closePath()
+        const result: Path2D = new Path2D()
+        result.moveTo(x, y + radius)
+        result.quadraticCurveTo(x, y, x + radius, y)
+        result.lineTo(x + width - radius, y)
+        result.quadraticCurveTo(x + width, y, x + width, y + radius)
+        result.lineTo(x + width, y + height)
+        result.lineTo(x, y + height)
+        result.closePath()
+        return result
     }
 
 const COLOR_IntNode_INTERIOR: string = "rgba(90, 90, 90, 0.75)"
@@ -143,10 +145,10 @@ class RenderedElement {
     // Overridable functions that define the draw and mouse handling events.
     preDraw(_: CanvasRenderingContext2D): void {}
     postDraw(_: CanvasRenderingContext2D): void {}
-    handleMouseDown(_ev: MouseEvent, _offset:Vec2): boolean {return false}
-    handleMouseUp(_ev: MouseEvent, _offset:Vec2): boolean {return false}
-    handleMouseMove(_ev: MouseEvent, _offset:Vec2): boolean {return false}
-    handleWheel(_ev: WheelEvent, _offset:Vec2): boolean {return false}
+    handleMouseDown(_ev: MouseEvent, _loc:Vec2, _ctx:CanvasRenderingContext2D): boolean {return false}
+    handleMouseUp(_ev: MouseEvent, _loc:Vec2, _ctx:CanvasRenderingContext2D): boolean {return false}
+    handleMouseMove(_ev: MouseEvent, _loc:Vec2, _ctx:CanvasRenderingContext2D): boolean {return false}
+    handleWheel(_ev: WheelEvent, _loc:Vec2, _ctx:CanvasRenderingContext2D): boolean {return false}
 
     // Helper recursive functions. Do not override!
     constructor(location: Vec2) {
@@ -162,64 +164,156 @@ class RenderedElement {
         this.postDraw(ctx)
         ctx.translate(-this.location.x, -this.location.y)
     }
-    handleMouseDownHelper(ev: MouseEvent, offset:Vec2): boolean {
+    handleMouseDownHelper(ev: MouseEvent, loc:Vec2, ctx: CanvasRenderingContext2D): boolean {
+        ctx.translate(this.location.x, this.location.y)
         for (var child of this.children) {
-            if (child.handleMouseDownHelper(ev, {x: offset.x + child.location.x, y: offset.y + child.location.y})) {
+            if (child.handleMouseDownHelper(ev, loc, ctx)) {
+                ctx.translate(-this.location.x, -this.location.y)
                 return true
             }
         }
-        return this.handleMouseDown(ev, offset)
+        const result:boolean = this.handleMouseDown(ev, loc, ctx)
+        ctx.translate(-this.location.x, -this.location.y)
+        return result
     }
-    handleMouseUpHelper(ev: MouseEvent, offset:Vec2): boolean {
+    handleMouseUpHelper(ev: MouseEvent, loc:Vec2, ctx: CanvasRenderingContext2D): boolean {
+        ctx.translate(this.location.x, this.location.y)
         for (var child of this.children) {
-            if (child.handleMouseUpHelper(ev, {x: offset.x + child.location.x, y: offset.y + child.location.y})) {
+            if (child.handleMouseUpHelper(ev, loc, ctx)) {
+                ctx.translate(-this.location.x, -this.location.y)
                 return true
             }
         }
-        return this.handleMouseUp(ev, offset)
+        const result:boolean = this.handleMouseUp(ev, loc, ctx)
+        ctx.translate(-this.location.x, -this.location.y)
+        return result
+    }
+    handleMouseMoveHelper(ev: MouseEvent, loc:Vec2, ctx:CanvasRenderingContext2D): boolean {
+        ctx.translate(this.location.x, this.location.y)
+        for (var child of this.children) {
+            if (child.handleMouseMoveHelper(ev, loc, ctx)) {
+                ctx.translate(-this.location.x, -this.location.y)
+                return true
+            }
+        }
+        const result:boolean = this.handleMouseMove(ev, loc, ctx)
+        ctx.translate(-this.location.x, -this.location.y)
+        return result
 
     }
-    handleMouseMoveHelper(ev: MouseEvent, offset:Vec2): boolean {
+    handleWheelHelper(ev: WheelEvent, loc:Vec2, ctx:CanvasRenderingContext2D): boolean {
+        ctx.translate(this.location.x, this.location.y)
         for (var child of this.children) {
-            if (child.handleMouseMoveHelper(ev, {x: offset.x + child.location.x, y: offset.y + child.location.y})) {
+            if (child.handleWheelHelper(ev, loc, ctx)) {
+                ctx.translate(-this.location.x, -this.location.y)
                 return true
             }
         }
-        return this.handleMouseMove(ev, offset)
-
-    }
-    handleWheelHelper(ev: WheelEvent, offset:Vec2): boolean {
-        for (var child of this.children) {
-            if (child.handleWheelHelper(ev, {x: offset.x + child.location.x, y: offset.y + child.location.y})) {
-                return true
-            }
-        }
-        return this.handleWheel(ev, offset)
+        const result:boolean = this.handleWheel(ev, loc, ctx)
+        ctx.translate(-this.location.x, -this.location.y)
+        return result
     }
 }
 
-class NodeElement extends RenderedElement {
-    constructor(location: Vec2, updateLocationCallback: (x: number, y: number)=> void) {
+export class NodeElement extends RenderedElement {
+    name: string
+    width: number
+    selected: boolean
+    updateLocationCallback: (x: number, y: number)=>void
+    bodyPath: Path2D
+
+    constructor(location: Vec2, name: string, selected: boolean, updateLocationCallback: (x: number, y: number)=> void) {
         super(location)
+        this.name = name
+        this.width = 100
+        this.selected = selected
+        this.updateLocationCallback = updateLocationCallback
     }
-    preDraw(_: CanvasRenderingContext2D): void {}
+    preDraw(ctx: CanvasRenderingContext2D): void {
+        const height: number = 25 + (this.children.length * NODE_FONT_SIZE * 2)
+        // Draw main IntNode rectangle
+        ctx.shadowBlur = 12
+        ctx.shadowColor = 'black'
+        ctx.shadowOffsetY = 7
+
+        this.bodyPath = pathRoundedRectangle(0, 0, this.width, height, NODE_RADIUS)
+        ctx.fillStyle = COLOR_IntNode_INTERIOR
+        ctx.fill(this.bodyPath)
+
+        if (this.selected) {
+            ctx.strokeStyle = COLOR_IntNode_HIGHLIGHT
+            ctx.lineWidth = 1
+            ctx.stroke(this.bodyPath)
+        }
+
+        ctx.shadowBlur = 0
+        ctx.shadowColor = COLOR_IntNode_SHADOW
+        ctx.shadowOffsetY = 0
+
+        ctx.fillStyle = COLOR_IntNode_TITLE
+        ctx.fill(pathUpperRoundedRectangle(0, 0, this.width, 14, NODE_RADIUS))
+
+        // Draw text
+        ctx.font = `${NODE_FONT_SIZE}px sans-serif`
+        ctx.textAlign = "left"
+        ctx.textBaseline = "alphabetic"
+        ctx.fillStyle = "white"
+        ctx.fillText(this.name, NODE_RADIUS, NODE_FONT_SIZE + 1)
+
+    }
     postDraw(_: CanvasRenderingContext2D): void {}
-    handleMouseDown(_ev: MouseEvent, _offset:Vec2): boolean {return false}
-    handleMouseUp(_ev: MouseEvent, _offset:Vec2): boolean {return false}
-    handleMouseMove(_ev: MouseEvent, _offset:Vec2): boolean {return false}
-    handleWheel(_ev: WheelEvent, _offset:Vec2): boolean {return false}
+    //handleMouseDown(_ev: MouseEvent, _ctx:CanvasRenderingContext2D): boolean {return false}
+    //handleMouseUp(_ev: MouseEvent, _ctx:CanvasRenderingContext2D): boolean {return false}
+    //handleMouseMove(_ev: MouseEvent, _ctx:CanvasRenderingContext2D): boolean {return false}
+    //handleWheel(_ev: WheelEvent, _ctx:CanvasRenderingContext2D): boolean {return false}
 }
 
-class PortElement extends RenderedElement {
-    constructor(location: Vec2, port_name: string, is_input: boolean) {
+export class PortElement extends RenderedElement {
+    streamStartCallback: ()=>void
+    streamEndCallback: ()=>void
+    name: string
+    width: number
+    isInput: boolean
+    portColor: Color
+    nodePath: Path2D
+    constructor(location: Vec2, width: number, streamStartCb:()=>void, streamEndCb:()=>void, portName: string, isInput: boolean, portColor: Color) {
         super(location)
+        this.name = portName
+        this.width = width
+        this.streamStartCallback = streamStartCb
+        this.streamEndCallback = streamEndCb
+        this.isInput = isInput
+        this.portColor = portColor
     }
     preDraw(_: CanvasRenderingContext2D): void {}
-    postDraw(_: CanvasRenderingContext2D): void {}
-    handleMouseDown(_ev: MouseEvent, _offset:Vec2): boolean {return false}
-    handleMouseUp(_ev: MouseEvent, _offset:Vec2): boolean {return false}
-    handleMouseMove(_ev: MouseEvent, _offset:Vec2): boolean {return false}
-    handleWheel(_ev: WheelEvent, _offset:Vec2): boolean {return false}
+    postDraw(ctx: CanvasRenderingContext2D): void {
+        const x: number = this.isInput ? 0 : this.width
+        this.nodePath = new Path2D()
+        this.nodePath.arc(x, 15, 5, 0, 2 * Math.PI)
+        this.nodePath.closePath()
+        
+        ctx.fill(this.nodePath)
+        ctx.stroke(this.nodePath)
+
+        ctx.textAlign = this.isInput ? "left" : "right"
+        ctx.textBaseline = "middle"
+        ctx.fillStyle = "white"
+        ctx.fillText(this.name,x + 10, 15)
+    }
+    handleMouseDown(_: MouseEvent, loc:Vec2, ctx:CanvasRenderingContext2D): boolean {
+        if (ctx.isPointInPath(this.nodePath, loc.x, loc.y)) {
+            this.streamStartCallback()
+            return true
+        }
+        return false
+    }
+    handleMouseUp(_: MouseEvent, loc:Vec2, ctx:CanvasRenderingContext2D): boolean {
+        if (ctx.isPointInPath(this.nodePath, loc.x, loc.y)) {
+            this.streamEndCallback()
+            return true
+        }
+        return false
+    }
 }
 
 class IntPortElement extends PortElement {
@@ -295,141 +389,4 @@ export function renderStatusbar(ctx: CanvasRenderingContext2D, text: string) {
     ctx.fillStyle = "white"
     ctx.fillText(text, 5, ctx.canvas.height)
     ctx.restore()
-}
-
-export function inPort(ctx: CanvasRenderingContext2D, node: Node, portIdx: number, c: Vec2): boolean {
-    ctx.save()
-    const nodeSize: Vec2 = calculateNodeSize(ctx, node)
-    const port: Port = node.ports[portIdx]
-    const portLoc: Vec2 = {
-        x: node.location.x + (port.is_input ? 0 : nodeSize.x),
-        y: node.location.y + 25 + (portIdx * 2 * NODE_FONT_SIZE)
-    }
-    ctx.beginPath()
-    ctx.arc(portLoc.x, portLoc.y, 5, 0, 2 * Math.PI)
-    ctx.closePath()
-    const result = ctx.isPointInPath(c.x, c.y)
-    ctx.restore()
-    return result
-}
-export function inNode(ctx: CanvasRenderingContext2D, node: Node, c: Vec2): boolean {
-    ctx.save()
-    const nodeSize: Vec2 = calculateNodeSize(ctx, node)
-    pathRoundedRectangle(ctx, node.location.x, node.location.y, nodeSize.x, nodeSize.y, NODE_RADIUS)
-    const result = ctx.isPointInPath(c.x, c.y)
-    ctx.restore()
-    return result
-}
-
-function calculateNodeSize(ctx: CanvasRenderingContext2D, node: Node): Vec2 {
-    ctx.save()
-    ctx.font = `${NODE_FONT_SIZE}px sans-serif`
-    ctx.textAlign = "left"
-    ctx.textBaseline = "alphabetic"
-
-    const titleWidth = ctx.measureText(node.node_name).width
-
-    var maxWidth = titleWidth
-    node.ports.forEach((port: Port) => {
-        maxWidth = Math.max(maxWidth, ctx.measureText(port.port_name).width)
-    })
-
-    return {
-        x: (maxWidth + NODE_RADIUS * 2) + 10,
-        y: 25 + (NODE_FONT_SIZE * node.ports.length * 2)
-    }
-}
-
-export function renderNode(
-    ctx: CanvasRenderingContext2D,
-    colorMap: ColorMap,
-    node: Node,
-    loc: Vec2,
-    selected: boolean) : DrawElement {
-    // Calculate overall size and locations of all ports.
-    ctx.save()
-    const nodeSize: Vec2 = calculateNodeSize(ctx, node)
-
-    // Draw main IntNode rectangle
-    ctx.shadowBlur = 12
-    ctx.shadowColor = 'black'
-    ctx.shadowOffsetY = 7
-
-    pathRoundedRectangle(ctx, loc.x, loc.y, nodeSize.x, nodeSize.y, NODE_RADIUS)
-    ctx.fillStyle = COLOR_IntNode_INTERIOR
-    ctx.fill()
-
-    if (selected) {
-        ctx.save()
-        ctx.strokeStyle = COLOR_IntNode_HIGHLIGHT
-        ctx.lineWidth = 1
-        ctx.stroke()
-        ctx.restore()
-    }
-
-    ctx.shadowBlur = 0
-    ctx.shadowColor = COLOR_IntNode_SHADOW
-    ctx.shadowOffsetY = 0
-
-    pathUpperRoundedRectangle(ctx, loc.x, loc.y, nodeSize.x, 14, NODE_RADIUS)
-    ctx.fillStyle = COLOR_IntNode_TITLE
-    ctx.fill()
-
-    // Draw text
-    ctx.font = `${NODE_FONT_SIZE}px sans-serif`
-    ctx.textAlign = "left"
-    ctx.textBaseline = "alphabetic"
-    ctx.fillStyle = "white"
-    ctx.fillText(node.node_name, loc.x + NODE_RADIUS, loc.y + NODE_FONT_SIZE + 1)
-
-    const nodeElement:DrawElement = {
-        inElement: (c: Vec2) => {
-            ctx.save()
-            pathRoundedRectangle(ctx, loc.x, loc.y, nodeSize.x, nodeSize.y, NODE_RADIUS)
-            const result = ctx.isPointInPath(c.x, c.y)
-            ctx.restore()
-            return result
-        },
-        children: []
-    }
-
-    // Draw ports
-    node.ports.forEach((port: Port, i: number) => {
-        ctx.fillStyle = color2css(colorMap[port.datatype])
-        ctx.strokeStyle = "black"
-        ctx.lineWidth = 1
-
-        const portLoc: Vec2 = {
-            x: loc.x + (port.is_input ? 0 : nodeSize.x),
-            y: loc.y + 25 + (i * 2 * NODE_FONT_SIZE)
-        }
-        ctx.beginPath()
-        ctx.arc(portLoc.x, portLoc.y, 5, 0, 2 * Math.PI)
-        ctx.closePath()
-
-        nodeElement.children.push({
-            inElement: (c: Vec2) => {
-                ctx.save()
-                ctx.beginPath()
-                ctx.arc(portLoc.x, portLoc.y, 5, 0, 2 * Math.PI)
-                ctx.closePath()
-                const result = ctx.isPointInPath(c.x, c.y)
-                ctx.restore()
-                return result
-            },
-            children: []
-        })
-
-        ctx.fill()
-        ctx.stroke()
-
-        ctx.textAlign = port.is_input ? "left" : "right"
-        ctx.textBaseline = "middle"
-        ctx.fillStyle = "white"
-        ctx.fillText(port.port_name,
-            portLoc.x + (10 * (port.is_input ? 1 : -1)),
-            portLoc.y)
-    })
-    ctx.restore()
-    return nodeElement
 }

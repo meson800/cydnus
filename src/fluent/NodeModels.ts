@@ -70,7 +70,8 @@ export class Node extends Model {
             })
 
             return {
-                location: [ Location, {x: 0, y: 0} ]
+                location: [ Location, {x: 0, y: 0} ],
+                width: [ Number, 100 ]
             }
         })
     }

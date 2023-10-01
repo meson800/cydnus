@@ -1,12 +1,12 @@
-import setuptools
+from setuptools import setup, Extension
 import sys
 
 with open("README.md" ,"r", encoding='utf8') as fh:
     long_description = fh.read()
 
-setuptools.setup(
-    name="fluent",
-    version="0.1",
+setup(
+    name="cydnus",
+    version="0.0.1",
     url='https://github.com/meson800/fluent',
     author="Christopher Johnstone",
     author_email="meson800@gmail.com",
@@ -14,13 +14,8 @@ setuptools.setup(
     license='GPLv2+',
     long_description=long_description,
     long_description_content_type="text/markdown",
-    packages=["fluent"],
+    packages=["cydnus"],
     package_dir={'': 'src'},
-    entry_points={
-        "console_scripts": [
-            "fluent=fluent:dispatch_console"
-            ],
-        },
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",
         "Programming Language :: Python :: 3",
@@ -29,7 +24,11 @@ setuptools.setup(
         ],
     install_requires=[
         'bokeh >= 2.2',
-        'fcsparser >= 0.2',
+        'holoviews',
+        'panel',
+        'datashader',
+        'jupyter_bokeh',
+        'libfcs >= 0.0.2'
         ],
     python_requires='>=3'
 )

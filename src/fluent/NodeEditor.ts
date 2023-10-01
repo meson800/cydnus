@@ -124,6 +124,7 @@ export class NodeEditorView extends HTMLBoxView {
     draw_ctx: CanvasRenderingContext2D | null
     ui_status: UIStatus
     streams: Set<Stream>
+    ui_elements: Set<r.NodeElement>
 
     last_IntNode_uid: number
 
@@ -397,6 +398,11 @@ export class NodeEditorView extends HTMLBoxView {
             r.renderGrid(this.draw_ctx, this.ui_status, 25,     1.0, '#131313')
             r.renderGrid(this.draw_ctx, this.ui_status, 25 * 5, 2.0, '#131313')
 
+            Object.entries(this.model.nodes).forEach((val: [string, Node]) => {
+                val[1].ports
+            })
+            this.model.nodes
+
             // Draw streams
             this.draw_ctx.save()
             this.draw_ctx.lineWidth = 3
@@ -422,8 +428,6 @@ export class NodeEditorView extends HTMLBoxView {
                 */
             this.draw_ctx.restore()
             // Draw IntNodes
-            this.model.nodes
-            
             
             /*
             Object.entries(this.model.nodes).forEach((val: [string, Node]) => {
@@ -475,7 +479,7 @@ export class NodeEditorView extends HTMLBoxView {
         this.canvas.addEventListener("mousemove", (ev) => this.handleMouseMove(ev))
         this.canvas.addEventListener("wheel", (ev) => this.handleWheel(ev))
         this.canvas.style.fontKerning = "normal"
-        this.canvas.style.textRendering = "optimizelegibility"
+        this.canvas.style.textRendering = "optimizeLegibility"
         
         this.draw_ctx = this.canvas.getContext("2d")
         this.el.appendChild(this.canvas)

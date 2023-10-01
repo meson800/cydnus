@@ -1,0 +1,3 @@
+[submodule "src/libfcs_ext/libfcs"]
+	path = src/libfcs_ext/libfcs
+	url = https://github.com/meson800/libfcs.git
